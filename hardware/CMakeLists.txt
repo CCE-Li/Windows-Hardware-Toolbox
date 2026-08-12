@@ -1,4 +1,6 @@
 add_library(htb_hardware STATIC
+    audio/AudioProvider.cpp
+    battery/BatteryProvider.cpp
     cpu/CpuProvider.cpp
     device/DeviceProvider.cpp
     gpu/GpuProvider.cpp

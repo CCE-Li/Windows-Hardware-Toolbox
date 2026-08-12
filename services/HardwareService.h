@@ -8,6 +8,8 @@
 #include <thread>
 
 #include "core/config/Config.h"
+#include "hardware/audio/AudioProvider.h"
+#include "hardware/battery/BatteryProvider.h"
 #include "hardware/cpu/CpuProvider.h"
 #include "hardware/device/DeviceProvider.h"
 #include "hardware/gpu/GpuProvider.h"
@@ -31,6 +33,8 @@ public:
     const DeviceProvider& device() const { return *m_device; }
     const StorageProvider& storage() const { return *m_storage; }
     const NetworkProvider& network() const { return *m_network; }
+    const BatteryProvider& battery() const { return *m_battery; }
+    const AudioProvider& audio() const { return *m_audio; }
     void requestDeviceRefresh() { m_device->requestRefresh(); }
 
     const Config& config() const { return m_config; }
@@ -53,6 +57,8 @@ private:
     std::unique_ptr<DeviceProvider> m_device;
     std::unique_ptr<StorageProvider> m_storage;
     std::unique_ptr<NetworkProvider> m_network;
+    std::unique_ptr<BatteryProvider> m_battery;
+    std::unique_ptr<AudioProvider> m_audio;
 
     std::atomic<std::chrono::steady_clock::time_point> m_lastRefresh{};
 };

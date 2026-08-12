@@ -11,10 +11,13 @@ namespace htb {
 
 namespace {
 std::filesystem::path defaultConfigPath() {
-    const wchar_t* base = _wgetenv(L"LOCALAPPDATA");
+    wchar_t* base = nullptr;
+    size_t len = 0;
+    _wdupenv_s(&base, &len, L"LOCALAPPDATA");
     std::filesystem::path dir = (base && *base)
                                     ? std::filesystem::path(base) / L"HardwareToolbox"
                                     : std::filesystem::temp_directory_path() / L"HardwareToolbox";
+    free(base);
     return dir / "config.toml";
 }
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(WindowsHardwareToolbox
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "Native Windows hardware management and diagnostics toolbox"
     LANGUAGES CXX)
 

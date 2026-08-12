@@ -2,6 +2,7 @@ add_library(htb_ui STATIC
     UiApp.cpp
     themes/Theme.cpp
     pages/AboutPage.cpp
+    pages/AudioPage.cpp
     pages/CpuPage.cpp
     pages/DashboardPage.cpp
     pages/DevicesPage.cpp

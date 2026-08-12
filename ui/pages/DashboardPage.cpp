@@ -5,6 +5,7 @@
 #include <string>
 
 #include "core/runtime/SystemInfo.h"
+#include "hardware/storage/StorageProvider.h"
 #include "ui/Format.h"
 
 #include "imgui.h"
@@ -36,6 +37,8 @@ void DashboardPage::draw(UiContext& ctx) {
     auto cpu = ctx.service.cpu().snapshot();
     auto gpus = ctx.service.gpu().snapshot();
     auto mem = ctx.service.memory().snapshot();
+    auto disks = ctx.service.storage().snapshot();
+    auto battery = ctx.service.battery().snapshot();
 
     ImGui::BeginChild("dash_body", ImVec2(0, 0));
     drawTile("tile_cpu", "CPU", ImVec2(tileW, tileH), [&] {
@@ -93,6 +96,41 @@ void DashboardPage::draw(UiContext& ctx) {
         ImGui::Text("系统版本: %s", system.osVersion.c_str());
         ImGui::Text("内部版本: %s", system.osBuild.c_str());
         ImGui::Text("架构: %s", system.architecture.c_str());
+    });
+    drawTile("tile_storage", "存储", ImVec2(tileW, rowH), [&] {
+        if (!disks || disks->empty()) {
+            ImGui::Text("未检测到磁盘");
+            return;
+        }
+        size_t healthy = 0;
+        size_t warning = 0;
+        for (const StorageDisk& d : *disks) {
+            if (d.healthAvailability == Availability::Available) {
+                if (d.healthStatus == "健康") ++healthy;
+                else ++warning;
+            }
+        }
+        ImGui::Text("物理磁盘: %zu 块", disks->size());
+        if (healthy > 0) ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f), "健康: %zu", healthy);
+        if (warning > 0) ImGui::TextColored(ImVec4(0.90f, 0.75f, 0.30f, 1.0f), "需关注: %zu", warning);
+        for (const StorageDisk& d : *disks) {
+            ImGui::TextWrapped("%s (%s)", d.name.c_str(), formatBytes(d.sizeBytes).c_str());
+        }
+    });
+    ImGui::SameLine();
+    drawTile("tile_battery", "电池", ImVec2(tileW, rowH), [&] {
+        if (!battery) {
+            ImGui::Text("正在采集...");
+            return;
+        }
+        if (battery->availability != Availability::Available) {
+            ImGui::Text("电池信息 %s", availabilityLabel(battery->availability).c_str());
+            return;
+        }
+        ImGui::ProgressBar(battery->chargePercent / 100.0f, ImVec2(-1.0f, 0.0f));
+        ImGui::Text("电量: %u%%", battery->chargePercent);
+        ImGui::Text("状态: %s", battery->status.empty() ? "-" : battery->status.c_str());
+        if (!battery->name.empty()) ImGui::TextDisabled("%s", battery->name.c_str());
     });
     ImGui::Spacing();
     ImGui::Separator();

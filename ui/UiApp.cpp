@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "ui/pages/AboutPage.h"
+#include "ui/pages/AudioPage.h"
 #include "ui/pages/CpuPage.h"
 #include "ui/pages/DashboardPage.h"
 #include "ui/pages/DevicesPage.h"
@@ -37,6 +38,7 @@ UiApp::UiApp(HardwareService& service, Config config)
     addPage<NetworkPage>(m_pages);
     addPage<UsbPage>(m_pages);
     addPage<DevicesPage>(m_pages);
+    addPage<AudioPage>(m_pages);
     addPage<DiagnosticsPage>(m_pages);
     addPage<SensorsPage>(m_pages);
     addPage<AboutPage>(m_pages);
