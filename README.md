@@ -10,7 +10,7 @@ Display / Battery / Sensors.
 
 C++20 / CMake / Win32 / COM / WMI / SetupAPI / PDH / DXGI / D3D11 / Dear ImGui / spdlog / TOML.
 
-## Status (v0.1.0 skeleton)
+## Status (v0.1.0)
 
 | Area | Status |
 | --- | --- |
@@ -21,13 +21,17 @@ C++20 / CMake / Win32 / COM / WMI / SetupAPI / PDH / DXGI / D3D11 / Dear ImGui /
 | CPU provider (registry + PDH usage) | Done |
 | GPU provider (DXGI enumeration + memory usage + driver info) | Done |
 | Memory provider (Win32 API + WMI DIMM) | Done |
-| UI: Dashboard / CPU / GPU / Memory pages, dark theme | Done |
+| Device enumeration (SetupAPI + CfgMgr32, parent/child) | Done |
+| Storage provider (WMI disks + health/temperature) | Done |
+| Network provider (IP Helper: addresses, link speed, live rates) | Done |
+| UI: 仪表盘/CPU/GPU/内存/存储/网络/USB/设备/诊断/传感器/关于 (中文) | Done |
+| CJK font (微软雅黑, scaled up) | Done |
 | Crash handler (unhandled exception logging) | Done |
 | Unit tests (config, metric, utf, vendor) | Done |
 
 ## Build
 
-Requirements: Visual Studio 2022 Build Tools (MSVC, C++ workload), CMake >= 3.25, Git.
+Requirements: Visual Studio 2022/2026 Build Tools (MSVC, C++ workload), CMake >= 3.25, Git.
 
 ```text
 powershell -ExecutionPolicy Bypass -File tools/fetch_deps.ps1
@@ -35,6 +39,14 @@ cmake --preset msvc-debug
 cmake --build --preset debug
 ctest --preset debug
 build\msvc-debug\bin\toolbox.exe
+```
+
+On machines where the VS instance is not auto-detected by CMake (e.g. relocated Build Tools
+without installer COM registration), configure through the toolchain wrapper:
+
+```text
+tools\msvc_env.bat cmake --preset ninja-msvc-debug
+tools\msvc_env.bat cmake --build --preset debug
 ```
 
 Run with `--console` to attach console output. Logs: `%LOCALAPPDATA%/HardwareToolbox/logs/`.
@@ -56,8 +68,8 @@ docs/            architecture notes
 
 ## Roadmap
 
-- P0: storage (SMART/NVMe), device enumeration (SetupAPI), dashboard expansion
-- P1: USB, network, display, audio, camera (Media Foundation), driver info
-- P2: sensors, diagnostics, SMART/NVMe health
+- P0: SMART/NVMe health details, battery, sensors
+- P1: camera (Media Foundation), audio, display (EDID), driver manager
+- P2: diagnostics expansion, SMART raw data
 - P3: virtual camera, benchmarks
 - P4: kernel-mode experiments (isolated, signed, VM-tested)

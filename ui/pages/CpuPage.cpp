@@ -26,41 +26,41 @@ void CpuPage::draw(UiContext& ctx) {
 
     auto cpu = ctx.service.cpu().snapshot();
     if (!cpu) {
-        ImGui::Text("Collecting...");
+        ImGui::Text("正在采集...");
         return;
     }
 
     ImGui::BeginChild("cpu_body", ImVec2(0, 0));
     if (ImGui::BeginTable("cpu_props", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-        ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthFixed, 220.0f);
-        ImGui::TableSetupColumn("Value");
+        ImGui::TableSetupColumn("属性", ImGuiTableColumnFlags_WidthFixed, 240.0f);
+        ImGui::TableSetupColumn("值");
         ImGui::TableHeadersRow();
-        propRow("Name", cpu->name);
-        propRow("Vendor", cpu->vendor);
-        propRow("Architecture", cpu->architecture);
-        propRow("Physical cores", std::to_string(cpu->physicalCores));
-        propRow("Logical cores", std::to_string(cpu->logicalCores));
-        propRow("Base frequency", cpu->baseFrequencyMHz
+        propRow("名称", cpu->name);
+        propRow("厂商", cpu->vendor);
+        propRow("架构", cpu->architecture);
+        propRow("物理核心数", std::to_string(cpu->physicalCores));
+        propRow("逻辑核心数", std::to_string(cpu->logicalCores));
+        propRow("基础频率", cpu->baseFrequencyMHz
                                        ? formatMhz(*cpu->baseFrequencyMHz)
                                        : std::string(availabilityLabel(Availability::Unsupported)));
-        propRow("Static source", cpu->staticSource);
+        propRow("静态信息来源", cpu->staticSource);
         ImGui::EndTable();
     }
 
     ImGui::Spacing();
-    ImGui::Text("Usage");
+    ImGui::Text("使用率");
     ImGui::Separator();
 
     if (cpu->usageAvailability != Availability::Available) {
-        ImGui::TextWrapped("Usage data %s. Source: %s",
+        ImGui::TextWrapped("使用率数据 %s。来源: %s",
                            availabilityLabel(cpu->usageAvailability).c_str(),
                            cpu->usageSource.empty() ? "-" : cpu->usageSource.c_str());
     } else {
-        ImGui::Text("Total");
+        ImGui::Text("总计");
         ImGui::ProgressBar(cpu->totalUsage / 100.0f, ImVec2(-1.0f, 0.0f), nullptr);
-        ImGui::Text("Total: %.1f%%   (source: %s)", cpu->totalUsage, cpu->usageSource.c_str());
+        ImGui::Text("总计: %.1f%%   (来源: %s)", cpu->totalUsage, cpu->usageSource.c_str());
         ImGui::Spacing();
-        ImGui::Text("Per logical core");
+        ImGui::Text("各逻辑核心");
         const int perRow = 4;
         for (size_t i = 0; i < cpu->perCoreUsage.size(); ++i) {
             if (i > 0 && i % perRow != 0) ImGui::SameLine();
@@ -68,7 +68,7 @@ void CpuPage::draw(UiContext& ctx) {
                              ImGui::GetStyle().ItemSpacing.x * (perRow - 1)) /
                             perRow;
             char label[32];
-            snprintf(label, sizeof(label), "Core %zu", i);
+            snprintf(label, sizeof(label), "核心 %zu", i);
             ImGui::BeginGroup();
             ImGui::TextDisabled("%s", label);
             ImGui::ProgressBar(cpu->perCoreUsage[i] / 100.0f, ImVec2(w, 0.0f), nullptr);

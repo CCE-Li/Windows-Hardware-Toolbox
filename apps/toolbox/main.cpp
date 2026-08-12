@@ -161,6 +161,24 @@ int runApp(HINSTANCE instance, htb::HardwareService& service) {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     htb::applyTheme();
+
+    {
+        const float fontSize = 17.0f;
+        ImFontConfig fontCfg{};
+        fontCfg.FontNo = 0;
+        ImFont* font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\msyh.ttc", fontSize, &fontCfg,
+                                                    io.Fonts->GetGlyphRangesChineseFull());
+        if (!font) {
+            HTB_WARN("[app] msyh.ttc unavailable; falling back to simhei.ttf");
+            font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\simhei.ttf", fontSize, nullptr,
+                                                io.Fonts->GetGlyphRangesChineseFull());
+        }
+        if (!font) {
+            HTB_WARN("[app] no CJK font loaded; text may render as boxes");
+            io.Fonts->AddFontDefault();
+        }
+    }
+
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
 

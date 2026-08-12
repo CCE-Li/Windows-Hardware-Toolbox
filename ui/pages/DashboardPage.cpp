@@ -24,14 +24,14 @@ void drawTile(const char* id, const char* label, const ImVec2& size, const std::
 void DashboardPage::draw(UiContext& ctx) {
     static const SystemInfo system = querySystemInfo();
 
-    ImGui::Text("Dashboard");
+    ImGui::Text("仪表盘");
     ImGui::Separator();
     ImGui::Spacing();
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float tileW = (avail.x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-    const float tileH = 150.0f;
-    const float rowH = 130.0f;
+    const float tileH = 160.0f;
+    const float rowH = 140.0f;
 
     auto cpu = ctx.service.cpu().snapshot();
     auto gpus = ctx.service.gpu().snapshot();
@@ -40,28 +40,28 @@ void DashboardPage::draw(UiContext& ctx) {
     ImGui::BeginChild("dash_body", ImVec2(0, 0));
     drawTile("tile_cpu", "CPU", ImVec2(tileW, tileH), [&] {
         if (!cpu) {
-            ImGui::Text("Collecting...");
+            ImGui::Text("正在采集...");
             return;
         }
         ImGui::TextWrapped("%s", cpu->name.c_str());
         ImGui::Spacing();
         if (cpu->usageAvailability == Availability::Available) {
             ImGui::ProgressBar(cpu->totalUsage / 100.0f, ImVec2(-1.0f, 0.0f));
-            ImGui::Text("Usage: %.1f%%", cpu->totalUsage);
+            ImGui::Text("使用率: %.1f%%", cpu->totalUsage);
         } else {
             ImGui::ProgressBar(0.0f, ImVec2(-1.0f, 0.0f), availabilityLabel(cpu->usageAvailability).c_str());
         }
-        ImGui::Text("%uC/%uT", cpu->physicalCores, cpu->logicalCores);
+        ImGui::Text("%u核/%u线程", cpu->physicalCores, cpu->logicalCores);
         if (cpu->baseFrequencyMHz) {
-            ImGui::Text("Base: %s", formatMhz(*cpu->baseFrequencyMHz).c_str());
+            ImGui::Text("基础频率: %s", formatMhz(*cpu->baseFrequencyMHz).c_str());
         } else {
-            ImGui::Text("Base: %s", availabilityLabel(Availability::Unsupported).c_str());
+            ImGui::Text("基础频率: %s", availabilityLabel(Availability::Unsupported).c_str());
         }
     });
     ImGui::SameLine();
     drawTile("tile_gpu", "GPU", ImVec2(tileW, tileH), [&] {
         if (!gpus || gpus->empty()) {
-            ImGui::Text("No GPU adapters detected");
+            ImGui::Text("未检测到 GPU 适配器");
             return;
         }
         const GpuInfo& gpu = gpus->front();
@@ -69,38 +69,38 @@ void DashboardPage::draw(UiContext& ctx) {
         ImGui::Spacing();
         if (gpu.usageAvailability == Availability::Available) {
             ImGui::ProgressBar(gpu.usagePercent / 100.0f, ImVec2(-1.0f, 0.0f));
-            ImGui::Text("VRAM: %s / %s (%.1f%%)", formatBytes(gpu.usageBytes).c_str(),
+            ImGui::Text("显存: %s / %s (%.1f%%)", formatBytes(gpu.usageBytes).c_str(),
                         formatBytes(gpu.dedicatedVramBytes).c_str(), gpu.usagePercent);
         } else {
             ImGui::ProgressBar(0.0f, ImVec2(-1.0f, 0.0f), availabilityLabel(gpu.usageAvailability).c_str());
-            ImGui::Text("VRAM: %s", formatBytes(gpu.dedicatedVramBytes).c_str());
+            ImGui::Text("显存: %s", formatBytes(gpu.dedicatedVramBytes).c_str());
         }
         ImGui::Text("%s", vendorName(gpu.vendor).data());
     });
-    drawTile("tile_mem", "Memory", ImVec2(tileW, rowH), [&] {
+    drawTile("tile_mem", "内存", ImVec2(tileW, rowH), [&] {
         if (!mem) {
-            ImGui::Text("Collecting...");
+            ImGui::Text("正在采集...");
             return;
         }
         ImGui::ProgressBar(mem->loadPercent / 100.0f, ImVec2(-1.0f, 0.0f));
-        ImGui::Text("Used: %s / %s", formatBytes(mem->usedBytes).c_str(), formatBytes(mem->totalBytes).c_str());
-        ImGui::Text("Available: %s", formatBytes(mem->availableBytes).c_str());
+        ImGui::Text("已用: %s / %s", formatBytes(mem->usedBytes).c_str(), formatBytes(mem->totalBytes).c_str());
+        ImGui::Text("可用: %s", formatBytes(mem->availableBytes).c_str());
     });
     ImGui::SameLine();
-    drawTile("tile_sys", "System", ImVec2(tileW, rowH), [&] {
+    drawTile("tile_sys", "系统", ImVec2(tileW, rowH), [&] {
         ImGui::TextWrapped("%s", system.osName.c_str());
-        if (!system.osDisplayVersion.empty()) ImGui::Text("Edition: %s", system.osDisplayVersion.c_str());
-        ImGui::Text("Version: %s", system.osVersion.c_str());
-        ImGui::Text("Build: %s", system.osBuild.c_str());
-        ImGui::Text("Arch: %s", system.architecture.c_str());
+        if (!system.osDisplayVersion.empty()) ImGui::Text("版本: %s", system.osDisplayVersion.c_str());
+        ImGui::Text("系统版本: %s", system.osVersion.c_str());
+        ImGui::Text("内部版本: %s", system.osBuild.c_str());
+        ImGui::Text("架构: %s", system.architecture.c_str());
     });
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::TextDisabled("Monitoring");
-    ImGui::Text("Refresh interval: %d ms | Last refresh: %.1fs ago",
+    ImGui::TextDisabled("监控");
+    ImGui::Text("刷新间隔: %d ms | 最近刷新: %.1fs 前",
                 ctx.service.intervalMs(),
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - ctx.service.lastRefresh()).count());
-    ImGui::TextDisabled("Hardware queries run on a worker thread; the UI thread is never blocked.");
+    ImGui::TextDisabled("硬件查询在工作线程执行，UI 线程不会被阻塞。");
     ImGui::EndChild();
 }
 

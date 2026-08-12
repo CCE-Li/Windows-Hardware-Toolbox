@@ -4,10 +4,17 @@
 #include <string>
 #include <utility>
 
+#include "ui/pages/AboutPage.h"
 #include "ui/pages/CpuPage.h"
 #include "ui/pages/DashboardPage.h"
+#include "ui/pages/DevicesPage.h"
+#include "ui/pages/DiagnosticsPage.h"
 #include "ui/pages/GpuPage.h"
 #include "ui/pages/MemoryPage.h"
+#include "ui/pages/NetworkPage.h"
+#include "ui/pages/SensorsPage.h"
+#include "ui/pages/StoragePage.h"
+#include "ui/pages/UsbPage.h"
 
 #include "imgui.h"
 
@@ -26,6 +33,13 @@ UiApp::UiApp(HardwareService& service, Config config)
     addPage<CpuPage>(m_pages);
     addPage<GpuPage>(m_pages);
     addPage<MemoryPage>(m_pages);
+    addPage<StoragePage>(m_pages);
+    addPage<NetworkPage>(m_pages);
+    addPage<UsbPage>(m_pages);
+    addPage<DevicesPage>(m_pages);
+    addPage<DiagnosticsPage>(m_pages);
+    addPage<SensorsPage>(m_pages);
+    addPage<AboutPage>(m_pages);
 }
 
 void UiApp::frame() {
@@ -44,7 +58,7 @@ void UiApp::frame() {
     {
         const float statusH = ImGui::GetFrameHeightWithSpacing();
         const ImVec2 avail = ImGui::GetContentRegionAvail();
-        const float sideW = 170.0f;
+        const float sideW = 180.0f;
 
         ImGui::BeginChild("sidebar", ImVec2(sideW, avail.y - statusH), ImGuiChildFlags_Borders);
         drawSidebar();
@@ -65,7 +79,7 @@ void UiApp::frame() {
 }
 
 void UiApp::drawSidebar() {
-    ImGui::TextColored(ImVec4(0.86f, 0.60f, 0.15f, 1.0f), "Hardware Toolbox");
+    ImGui::TextColored(ImVec4(0.86f, 0.60f, 0.15f, 1.0f), "硬件工具箱");
     ImGui::TextDisabled("v" HTB_VERSION_STRING);
     ImGui::Separator();
     ImGui::Spacing();
@@ -78,7 +92,7 @@ void UiApp::drawSidebar() {
 
     ImGui::Separator();
     ImGui::Spacing();
-    if (ImGui::Selectable("Quit")) {
+    if (ImGui::Selectable("退出")) {
         if (m_onQuit) m_onQuit();
     }
 }
@@ -87,11 +101,11 @@ void UiApp::drawStatusBar() {
     ImGui::Separator();
     ImGui::TextDisabled("FPS: %.0f", ImGui::GetIO().Framerate);
     ImGui::SameLine();
-    ImGui::TextDisabled("Refresh: %d ms", m_service.intervalMs());
+    ImGui::TextDisabled("刷新间隔: %d ms", m_service.intervalMs());
     ImGui::SameLine();
     const auto last = m_service.lastRefresh();
     const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - last).count();
-    ImGui::TextDisabled("Last refresh: %.1fs ago", secs);
+    ImGui::TextDisabled("最近刷新: %.1fs 前", secs);
     if (m_activePage >= 0 && m_activePage < static_cast<int>(m_pages.size())) {
         const std::string title(m_pages[static_cast<size_t>(m_activePage)]->title());
         ImGui::SameLine();

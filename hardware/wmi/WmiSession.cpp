@@ -6,16 +6,19 @@
 
 namespace htb {
 
-bool WmiSession::connect() {
-    if (m_services) return true;
+bool WmiSession::connect(const wchar_t* ns) {
+    if (m_services && m_namespace == ns) return true;
+    m_locator.Reset();
+    m_services.Reset();
+
     HRESULT hr = CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_locator));
     if (FAILED(hr)) {
         HTB_ERROR("[wmi] CoCreateInstance(WbemLocator) failed: {:#x}", static_cast<unsigned>(hr));
         return false;
     }
-    hr = m_locator->ConnectServer(_bstr_t(L"root\\cimv2"), nullptr, nullptr, 0, 0, nullptr, nullptr, &m_services);
+    hr = m_locator->ConnectServer(_bstr_t(ns), nullptr, nullptr, 0, 0, nullptr, nullptr, &m_services);
     if (FAILED(hr)) {
-        HTB_ERROR("[wmi] ConnectServer(root\\cimv2) failed: {:#x}", static_cast<unsigned>(hr));
+        HTB_ERROR("[wmi] ConnectServer({}) failed: {:#x}", toUtf8(ns), static_cast<unsigned>(hr));
         return false;
     }
     hr = CoSetProxyBlanket(m_services.Get(), RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr, RPC_C_AUTHN_LEVEL_CALL,
@@ -23,6 +26,7 @@ bool WmiSession::connect() {
     if (FAILED(hr)) {
         HTB_WARN("[wmi] CoSetProxyBlanket failed: {:#x}", static_cast<unsigned>(hr));
     }
+    m_namespace = ns;
     return true;
 }
 
@@ -73,6 +77,24 @@ bool readWmiUint64(IWbemClassObject* obj, const wchar_t* name, uint64_t& out) {
         ok = true;
     } else if (V_VT(&v) == VT_BSTR && V_BSTR(&v)) {
         out = _wcstoui64(V_BSTR(&v), nullptr, 10);
+        ok = true;
+    }
+    VariantClear(&v);
+    return ok;
+}
+
+bool readWmiUint16(IWbemClassObject* obj, const wchar_t* name, uint16_t& out) {
+    VARIANT v{};
+    if (FAILED(obj->Get(name, 0, &v, nullptr, nullptr))) return false;
+    bool ok = false;
+    if (V_VT(&v) == VT_UI2) {
+        out = V_UI2(&v);
+        ok = true;
+    } else if (V_VT(&v) == VT_I4) {
+        out = static_cast<uint16_t>(V_I4(&v));
+        ok = true;
+    } else if (V_VT(&v) == VT_BSTR && V_BSTR(&v)) {
+        out = static_cast<uint16_t>(_wtoi(V_BSTR(&v)));
         ok = true;
     }
     VariantClear(&v);

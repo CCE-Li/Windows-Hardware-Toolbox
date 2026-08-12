@@ -9,8 +9,11 @@
 
 #include "core/config/Config.h"
 #include "hardware/cpu/CpuProvider.h"
+#include "hardware/device/DeviceProvider.h"
 #include "hardware/gpu/GpuProvider.h"
 #include "hardware/memory/MemoryProvider.h"
+#include "hardware/network/NetworkProvider.h"
+#include "hardware/storage/StorageProvider.h"
 
 namespace htb {
 
@@ -25,6 +28,10 @@ public:
     const CpuProvider& cpu() const { return *m_cpu; }
     const GpuProvider& gpu() const { return *m_gpu; }
     const MemoryProvider& memory() const { return *m_memory; }
+    const DeviceProvider& device() const { return *m_device; }
+    const StorageProvider& storage() const { return *m_storage; }
+    const NetworkProvider& network() const { return *m_network; }
+    void requestDeviceRefresh() { m_device->requestRefresh(); }
 
     const Config& config() const { return m_config; }
     int intervalMs() const { return m_intervalMs; }
@@ -43,6 +50,9 @@ private:
     std::unique_ptr<CpuProvider> m_cpu;
     std::unique_ptr<GpuProvider> m_gpu;
     std::unique_ptr<MemoryProvider> m_memory;
+    std::unique_ptr<DeviceProvider> m_device;
+    std::unique_ptr<StorageProvider> m_storage;
+    std::unique_ptr<NetworkProvider> m_network;
 
     std::atomic<std::chrono::steady_clock::time_point> m_lastRefresh{};
 };

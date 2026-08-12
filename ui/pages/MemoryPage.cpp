@@ -19,49 +19,49 @@ void propRow(const char* label, const std::string& value) {
 } // namespace
 
 void MemoryPage::draw(UiContext& ctx) {
-    ImGui::Text("Memory");
+    ImGui::Text("内存");
     ImGui::Separator();
     ImGui::Spacing();
 
     auto mem = ctx.service.memory().snapshot();
     if (!mem) {
-        ImGui::Text("Collecting...");
+        ImGui::Text("正在采集...");
         return;
     }
 
     ImGui::BeginChild("mem_body", ImVec2(0, 0));
     if (ImGui::BeginTable("mem_props", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-        ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthFixed, 220.0f);
-        ImGui::TableSetupColumn("Value");
+        ImGui::TableSetupColumn("属性", ImGuiTableColumnFlags_WidthFixed, 240.0f);
+        ImGui::TableSetupColumn("值");
         ImGui::TableHeadersRow();
-        propRow("Total", formatBytes(mem->totalBytes));
-        propRow("Used", formatBytes(mem->usedBytes));
-        propRow("Available", formatBytes(mem->availableBytes));
-        propRow("Load", std::to_string(static_cast<int>(mem->loadPercent)) + "%");
-        propRow("Source", mem->source);
+        propRow("总容量", formatBytes(mem->totalBytes));
+        propRow("已用", formatBytes(mem->usedBytes));
+        propRow("可用", formatBytes(mem->availableBytes));
+        propRow("负载", std::to_string(static_cast<int>(mem->loadPercent)) + "%");
+        propRow("来源", mem->source);
         ImGui::EndTable();
     }
     ImGui::ProgressBar(mem->loadPercent / 100.0f, ImVec2(-1.0f, 0.0f));
-    ImGui::Text("Load: %.1f%%", mem->loadPercent);
+    ImGui::Text("负载: %.1f%%", mem->loadPercent);
 
     ImGui::Spacing();
-    ImGui::Text("Modules (DIMM)");
+    ImGui::Text("内存条 (DIMM)");
     ImGui::Separator();
 
     if (mem->dimmAvailability != Availability::Available) {
-        ImGui::TextWrapped("DIMM information %s. Source: %s",
+        ImGui::TextWrapped("内存条信息 %s。来源: %s",
                            availabilityLabel(mem->dimmAvailability).c_str(), mem->dimmSource.c_str());
     } else if (mem->dimms.empty()) {
-        ImGui::Text("No memory modules reported by WMI");
+        ImGui::Text("WMI 未报告内存条信息");
     } else {
         if (ImGui::BeginTable("dimm_table", 6,
                               ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY)) {
-            ImGui::TableSetupColumn("Slot", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-            ImGui::TableSetupColumn("Manufacturer", ImGuiTableColumnFlags_WidthFixed, 140.0f);
-            ImGui::TableSetupColumn("Part Number", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Capacity", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-            ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-            ImGui::TableSetupColumn("Speed", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+            ImGui::TableSetupColumn("插槽", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("制造商", ImGuiTableColumnFlags_WidthFixed, 160.0f);
+            ImGui::TableSetupColumn("部件号", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("容量", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+            ImGui::TableSetupColumn("类型", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+            ImGui::TableSetupColumn("频率", ImGuiTableColumnFlags_WidthFixed, 110.0f);
             ImGui::TableHeadersRow();
             for (const DimInfo& dim : mem->dimms) {
                 ImGui::TableNextRow();
@@ -81,7 +81,7 @@ void MemoryPage::draw(UiContext& ctx) {
             }
             ImGui::EndTable();
         }
-        ImGui::TextDisabled("Source: %s", mem->dimmSource.c_str());
+        ImGui::TextDisabled("来源: %s", mem->dimmSource.c_str());
     }
     ImGui::EndChild();
 }

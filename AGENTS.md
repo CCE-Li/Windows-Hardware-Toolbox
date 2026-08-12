@@ -49,5 +49,6 @@ Logs: `%LOCALAPPDATA%/HardwareToolbox/logs/toolbox.log`
 
 ## Status
 
-Skeleton (v0.1.0): logging, config, worker-thread service, CPU/GPU/Memory providers, Dashboard/CPU/GPU/Memory pages.
-Next: Storage provider, Network provider, USB, Sensors, Diagnostics. See README roadmap.
+v0.1.0: logging, config, worker-thread service, CPU/GPU/Memory/Device/Storage/Network providers,
+中文 UI (11 pages: 仪表盘/CPU/GPU/内存/存储/网络/USB/设备/诊断/传感器/关于), CJK font.
+Next: Sensors (vendor SDK plugins), SMART raw data, Camera (Media Foundation), Audio, Display.
