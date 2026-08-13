@@ -11,6 +11,7 @@
 #include "hardware/audio/AudioProvider.h"
 #include "hardware/battery/BatteryProvider.h"
 #include "hardware/camera/CameraProvider.h"
+#include "hardware/camera/VirtualCameraController.h"
 #include "hardware/cpu/CpuProvider.h"
 #include "hardware/device/DeviceProvider.h"
 #include "hardware/display/DisplayProvider.h"
@@ -61,6 +62,12 @@ public:
     }
     void setVolumeAsync(float level, bool muted) { m_audio->setVolumeAsync(level, muted); }
 
+    void createVirtualCamera(const std::string& friendlyName) {
+        m_virtualCamera->create(friendlyName);
+    }
+    void removeVirtualCamera() { m_virtualCamera->remove(); }
+    const VirtualCameraController& virtualCamera() const { return *m_virtualCamera; }
+
     const Config& config() const { return m_config; }
     int intervalMs() const { return m_intervalMs; }
     std::chrono::steady_clock::time_point lastRefresh() const;
@@ -85,6 +92,7 @@ private:
     std::unique_ptr<AudioProvider> m_audio;
     std::unique_ptr<CameraProvider> m_camera;
     std::unique_ptr<DisplayProvider> m_display;
+    std::unique_ptr<VirtualCameraController> m_virtualCamera;
 
     std::atomic<std::chrono::steady_clock::time_point> m_lastRefresh{};
 };

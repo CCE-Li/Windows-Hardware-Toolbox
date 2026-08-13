@@ -1,0 +1,6 @@
+#pragma once
+
+#include <guiddef.h>
+
+static constexpr CLSID CLSID_HtbVirtualCamera = {0x7D8E9F3A, 0x2C4B, 0x4E5F,
+                                                 {0x9A, 0x1C, 0x3D, 0x2B, 0x6E, 0x8F, 0x4A, 0x51}};
