@@ -18,6 +18,25 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
+std::string guidString(REFGUID g) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}", g.Data1, g.Data2, g.Data3,
+             g.Data4[0], g.Data4[1], g.Data4[2], g.Data4[3], g.Data4[4], g.Data4[5], g.Data4[6], g.Data4[7]);
+    return buf;
+}
+
+void traceLog(const std::string& msg) {
+    OutputDebugStringA(("htb-vcam: " + msg + "\n").c_str());
+    char tmp[MAX_PATH]{};
+    if (GetTempPathA(MAX_PATH, tmp) == 0) return;
+    std::string path = std::string(tmp) + "htb_vcam_trace.log";
+    FILE* f = nullptr;
+    if (fopen_s(&f, path.c_str(), "a") == 0 && f) {
+        fprintf(f, "%s\n", msg.c_str());
+        fclose(f);
+    }
+}
+
 HRESULT queueEvent(IMFMediaEventQueue* queue, MediaEventType type, HRESULT hrStatus, const PROPVARIANT* value) {
     ComPtr<IMFMediaEvent> ev;
     HRESULT hr = MFCreateMediaEvent(type, GUID_NULL, hrStatus, value, &ev);
@@ -158,6 +177,7 @@ public:
     ~VirtualCameraSource() = default;
 
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
+        traceLog("source QI " + guidString(riid));
         if (riid == IID_IUnknown || riid == IID_IMFMediaSource || riid == IID_IMFMediaEventGenerator) {
             *ppv = static_cast<IMFMediaSource*>(this);
         } else if (riid == IID_IMFActivate || riid == IID_IMFAttributes) {
@@ -245,7 +265,10 @@ public:
     }
     STDMETHODIMP CopyAllItems(IMFAttributes* dest) override { return m_attributes->CopyAllItems(dest); }
 
-    STDMETHODIMP ActivateObject(REFIID riid, void** ppv) override { return QueryInterface(riid, ppv); }
+    STDMETHODIMP ActivateObject(REFIID riid, void** ppv) override {
+        traceLog("ActivateObject " + guidString(riid));
+        return QueryInterface(riid, ppv);
+    }
     STDMETHODIMP DetachObject() override { return E_NOTIMPL; }
     STDMETHODIMP ShutdownObject() override { return Shutdown(); }
 

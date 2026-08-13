@@ -110,11 +110,19 @@ void VirtualCameraController::create(const std::string& friendlyName) {
         const std::wstring name = toWide(friendlyName);
         const std::wstring clsid = toWide(clsidString());
         const GUID categories[] = {KSCATEGORY_VIDEO_CAMERA, KSCATEGORY_VIDEO, KSCATEGORY_CAPTURE};
-        const HRESULT hr = MFCreateVirtualCamera(MFVirtualCameraType_SoftwareCameraSource,
-                                                 MFVirtualCameraLifetime_System, MFVirtualCameraAccess_CurrentUser,
-                                                 name.c_str(), clsid.c_str(), categories, 3, out);
-        if (FAILED(hr)) return hr;
-        return (*out)->Start(nullptr);
+        const HRESULT createHr = MFCreateVirtualCamera(MFVirtualCameraType_SoftwareCameraSource,
+                                                       MFVirtualCameraLifetime_System,
+                                                       MFVirtualCameraAccess_CurrentUser, name.c_str(), clsid.c_str(),
+                                                       categories, 3, out);
+        if (FAILED(createHr)) {
+            HTB_ERROR("[camera] MFCreateVirtualCamera failed: {:#x}", static_cast<unsigned>(createHr));
+            return createHr;
+        }
+        const HRESULT startHr = (*out)->Start(nullptr);
+        if (FAILED(startHr)) {
+            HTB_ERROR("[camera] IMFVirtualCamera::Start failed: {:#x}", static_cast<unsigned>(startHr));
+        }
+        return startHr;
     });
 }
 
