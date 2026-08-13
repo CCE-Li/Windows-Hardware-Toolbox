@@ -11,6 +11,7 @@
 #include "hardware/audio/AudioProvider.h"
 #include "hardware/battery/BatteryProvider.h"
 #include "hardware/camera/CameraProvider.h"
+#include "hardware/camera/VideoTransformPipeline.h"
 #include "hardware/camera/VirtualCameraController.h"
 #include "hardware/cpu/CpuProvider.h"
 #include "hardware/device/DeviceProvider.h"
@@ -68,6 +69,13 @@ public:
     void removeVirtualCamera() { m_virtualCamera->remove(); }
     const VirtualCameraController& virtualCamera() const { return *m_virtualCamera; }
 
+    void startCameraOutput(const CameraOutputParams& params) { m_cameraOutput->start(params); }
+    void updateCameraOutput(const CameraOutputParams& params) { m_cameraOutput->updateParams(params); }
+    void stopCameraOutput() { m_cameraOutput->stop(); }
+    std::shared_ptr<const CameraOutputStatus> cameraOutputStatus() const {
+        return m_cameraOutput->status();
+    }
+
     const Config& config() const { return m_config; }
     int intervalMs() const { return m_intervalMs; }
     std::chrono::steady_clock::time_point lastRefresh() const;
@@ -93,6 +101,7 @@ private:
     std::unique_ptr<CameraProvider> m_camera;
     std::unique_ptr<DisplayProvider> m_display;
     std::unique_ptr<VirtualCameraController> m_virtualCamera;
+    std::unique_ptr<VideoTransformPipeline> m_cameraOutput;
 
     std::atomic<std::chrono::steady_clock::time_point> m_lastRefresh{};
 };

@@ -3,6 +3,7 @@
 #include <string>
 
 #include "hardware/camera/CameraProvider.h"
+#include "hardware/camera/VideoTransformPipeline.h"
 
 #include "imgui.h"
 
@@ -84,9 +85,87 @@ void CameraPage::draw(UiContext& ctx) {
                                    status->message.c_str());
             }
         }
-        ImGui::TextWrapped("虚拟摄像头输出 640x480 @ 30fps NV12 测试图案（彩条 + 帧计数），"
-                           "创建后可在其他应用（相机、微信、Teams 等）中选择使用。");
-        ImGui::TextDisabled("技术方案: Media Foundation Virtual Camera (Windows 11 22H2+)，用户态实现，无内核驱动。");
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("实时输出 (真实摄像头 -> 变换 -> 虚拟摄像头)");
+    ImGui::Separator();
+    {
+        static CameraOutputParams params;
+        static int selectedCamera = 0;
+        const auto output = ctx.service.cameraOutputStatus();
+        const bool outputRunning = output && output->running;
+
+        if (cameras->empty()) {
+            ImGui::Text("未检测到摄像头，无法启动实时输出");
+        } else {
+            ImGui::SetNextItemWidth(320.0f);
+            if (ImGui::BeginCombo("摄像头", selectedCamera < static_cast<int>(cameras->size())
+                                              ? cameras->at(static_cast<size_t>(selectedCamera)).name.c_str()
+                                              : "-")) {
+                for (size_t i = 0; i < cameras->size(); ++i) {
+                    const std::string label = std::to_string(i) + ": " + cameras->at(i).name;
+                    if (ImGui::Selectable(label.c_str(), selectedCamera == static_cast<int>(i))) {
+                        selectedCamera = static_cast<int>(i);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            params.cameraIndex = selectedCamera;
+            if (ImGui::SliderFloat("缩放", &params.zoom, 1.0f, 3.0f, "%.2fx")) {
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+            if (ImGui::SliderFloat("水平平移", &params.panX, -1.0f, 1.0f, "%.2f")) {
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+            if (ImGui::SliderFloat("垂直平移", &params.panY, -1.0f, 1.0f, "%.2f")) {
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+            if (ImGui::Checkbox("水平翻转", &params.flipHorizontal)) {
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+            ImGui::SameLine();
+            if (ImGui::Checkbox("垂直翻转", &params.flipVertical)) {
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+            ImGui::SameLine();
+            static bool rot180 = false;
+            if (ImGui::Checkbox("旋转 180", &rot180)) {
+                params.rotation = rot180 ? 180 : 0;
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+            if (ImGui::SliderInt("亮度", &params.brightness, -100, 100)) {
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+            if (ImGui::SliderInt("对比度", &params.contrast, -100, 100)) {
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+            if (ImGui::SliderInt("饱和度", &params.saturation, -100, 100)) {
+                if (outputRunning) ctx.service.updateCameraOutput(params);
+            }
+
+            if (outputRunning) {
+                if (ImGui::Button("停止输出")) ctx.service.stopCameraOutput();
+            } else {
+                if (ImGui::Button("开始输出")) ctx.service.startCameraOutput(params);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("输出 1280x720 NV12 @ 源帧率");
+
+            if (output) {
+                if (output->running) {
+                    ImGui::Text("状态: %s | 源 %ux%u | %.1f fps | 已发送 %llu 帧", output->message.c_str(),
+                                output->sourceWidth, output->sourceHeight, output->fps,
+                                static_cast<unsigned long long>(output->framesSent));
+                } else if (!output->message.empty()) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s", output->message.c_str());
+                }
+            }
+            ImGui::TextWrapped("提示: 先创建虚拟摄像头，再点击“开始输出”，然后在其他应用中选择该虚拟摄像头。"
+                               "缩放/平移/颜色调整实时生效；无输出时虚拟摄像头显示测试图案。");
+        }
     }
 
     ImGui::Spacing();
@@ -115,7 +194,6 @@ void CameraPage::draw(UiContext& ctx) {
         }
         ImGui::Spacing();
         ImGui::TextDisabled("来源: %s", cameras->front().source.c_str());
-        ImGui::TextWrapped("预览、分辨率与帧率控制属于后续阶段 (Media Foundation 视频管线 + D3D11 纹理)。");
     }
     ImGui::EndChild();
 }

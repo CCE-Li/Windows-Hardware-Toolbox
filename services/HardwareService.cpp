@@ -38,7 +38,8 @@ HardwareService::HardwareService(Config config)
       m_audio(std::make_unique<AudioProvider>()),
       m_camera(std::make_unique<CameraProvider>()),
       m_display(std::make_unique<DisplayProvider>()),
-      m_virtualCamera(std::make_unique<VirtualCameraController>()) {}
+      m_virtualCamera(std::make_unique<VirtualCameraController>()),
+      m_cameraOutput(std::make_unique<VideoTransformPipeline>()) {}
 
 HardwareService::~HardwareService() {
     stop();

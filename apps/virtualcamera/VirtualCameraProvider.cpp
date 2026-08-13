@@ -14,9 +14,57 @@
 #include <windows.h>
 #include <wrl/client.h>
 
+#include "hardware/camera/FrameShm.h"
+
 using Microsoft::WRL::ComPtr;
 
 namespace {
+
+constexpr DWORD kFrameWidth = htb::kFrameShmOutWidth;
+constexpr DWORD kFrameHeight = htb::kFrameShmOutHeight;
+constexpr DWORD kFrameRate = 30;
+constexpr long long kFrameDuration = 10000000LL / kFrameRate;
+constexpr DWORD kYPlaneSize = kFrameWidth * kFrameHeight;
+constexpr DWORD kFrameSize = kYPlaneSize + (kFrameWidth / 2) * (kFrameHeight / 2) * 2;
+
+class ShmFrameReader {
+public:
+    ShmFrameReader() = default;
+    ~ShmFrameReader() {
+        if (m_view) UnmapViewOfFile(m_view);
+        if (m_map) CloseHandle(m_map);
+    }
+
+    bool read(uint8_t* dst, size_t dstSize, uint64_t& frameIndex) {
+        std::lock_guard lock(m_mutex);
+        if (!m_map) {
+            m_map = OpenFileMappingW(FILE_MAP_READ, FALSE, htb::kFrameShmName);
+            if (m_map) m_view = static_cast<uint8_t*>(MapViewOfFile(m_map, FILE_MAP_READ, 0, 0, 0));
+        }
+        if (!m_map || !m_view) return false;
+        const auto* header = reinterpret_cast<const htb::FrameShmHeader*>(m_view);
+        if (header->magic != htb::kFrameShmMagic || !header->sourceActive) return false;
+        const uint32_t gen = header->generation;
+        if (gen == m_lastGeneration) return false;
+        if (header->dataSize > dstSize) return false;
+        if (header->width != kFrameWidth || header->height != kFrameHeight) return false;
+        memcpy(dst, m_view + sizeof(htb::FrameShmHeader), header->dataSize);
+        if (header->generation != gen) return false;
+        m_lastGeneration = gen;
+        frameIndex = header->frameIndex;
+        return true;
+    }
+
+    bool available() {
+        return m_map != nullptr && m_view != nullptr;
+    }
+
+private:
+    std::mutex m_mutex;
+    HANDLE m_map = nullptr;
+    uint8_t* m_view = nullptr;
+    uint32_t m_lastGeneration = 0;
+};
 
 std::string guidString(REFGUID g) {
     char buf[64];
@@ -43,13 +91,6 @@ HRESULT queueEvent(IMFMediaEventQueue* queue, MediaEventType type, HRESULT hrSta
     if (FAILED(hr)) return hr;
     return queue->QueueEvent(ev.Get());
 }
-
-constexpr DWORD kFrameWidth = 640;
-constexpr DWORD kFrameHeight = 480;
-constexpr DWORD kFrameRate = 30;
-constexpr long long kFrameDuration = 10000000LL / kFrameRate;
-constexpr DWORD kYPlaneSize = kFrameWidth * kFrameHeight;
-constexpr DWORD kFrameSize = kYPlaneSize + (kFrameWidth / 2) * (kFrameHeight / 2) * 2;
 
 struct YuvColor {
     uint8_t y;
@@ -299,6 +340,8 @@ private:
     ComPtr<IMFAttributes> m_attributes;
     ComPtr<IMFMediaType> m_mediaType;
     std::unique_ptr<VirtualCameraStream> m_stream;
+    std::unique_ptr<ShmFrameReader> m_shmReader;
+    uint64_t m_lastShmIndex = 0;
     uint64_t m_frameCounter = 0;
     long long m_streamStartTime = 0;
 };
@@ -404,7 +447,15 @@ HRESULT VirtualCameraSource::generateSample(IMFMediaEventQueue* streamEvents) {
     BYTE* data = nullptr;
     hr = buffer->Lock(&data, nullptr, nullptr);
     if (FAILED(hr)) return hr;
-    fillTestPattern(data, data + kYPlaneSize, m_frameCounter);
+
+    if (!m_shmReader) m_shmReader = std::make_unique<ShmFrameReader>();
+    uint64_t shmIndex = 0;
+    if (m_shmReader->read(data, kFrameSize, shmIndex)) {
+        m_lastShmIndex = shmIndex;
+    } else {
+        fillTestPattern(data, data + kYPlaneSize, m_frameCounter);
+        if (!m_shmReader->available()) m_lastShmIndex = 0;
+    }
     buffer->Unlock();
     buffer->SetCurrentLength(kFrameSize);
 
