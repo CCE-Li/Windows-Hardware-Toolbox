@@ -282,27 +282,6 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
 
     const bool autoRegister = cmdLine && wcsstr(cmdLine, L"--auto-register-vcamera") != nullptr;
     const bool autoUnregister = cmdLine && wcsstr(cmdLine, L"--auto-unregister-vcamera") != nullptr;
-    if (autoRegister || autoUnregister) {
-        std::wstring name = L"Hardware Toolbox 虚拟摄像头";
-        const wchar_t* quote = wcsstr(cmdLine, L"\"");
-        if (quote) {
-            const wchar_t* end = wcschr(quote + 1, L'"');
-            if (end) name.assign(quote + 1, end - quote - 1);
-        }
-        const long hr = autoUnregister
-                            ? htb::VirtualCameraRegistrar::unregisterVirtualCamera(htb::toUtf8(name))
-                            : htb::VirtualCameraRegistrar::registerVirtualCamera(htb::toUtf8(name));
-        {
-            std::ofstream out(htb::VirtualCameraController::resultFilePath());
-            if (out) {
-                out << (SUCCEEDED(hr) ? "success" : "fail") << "\n";
-                char buf[16];
-                snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(hr));
-                out << (SUCCEEDED(hr) ? "创建成功" : std::string("失败 ") + buf) << "\n";
-            }
-        }
-        HTB_INFO("[app] auto vcamera action finished: {:#x}", static_cast<unsigned>(hr));
-    }
 
     htb::Config config = htb::Config::load();
     HTB_INFO("[app] Hardware Toolbox v{} starting", HTB_VERSION_STRING);
@@ -311,6 +290,17 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     }
 
     htb::HardwareService service(std::move(config));
+    if (autoRegister || autoUnregister) {
+        std::wstring name = L"Hardware Toolbox 虚拟摄像头";
+        const wchar_t* quote = wcsstr(cmdLine, L"\"");
+        if (quote) {
+            const wchar_t* end = wcschr(quote + 1, L'"');
+            if (end) name.assign(quote + 1, end - quote - 1);
+        }
+        service.setPendingVcameraAction(autoUnregister ? htb::HardwareService::VcameraAction::Unregister
+                                                       : htb::HardwareService::VcameraAction::Register,
+                                        htb::toUtf8(name));
+    }
     service.start();
     const int rc = htb_app::runApp(instance, service, cmdLine);
     service.stop();

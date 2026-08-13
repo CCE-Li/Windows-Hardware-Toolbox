@@ -87,13 +87,14 @@ void VirtualCameraController::run(const std::string& operation, const std::strin
 
             SHELLEXECUTEINFOW sei{};
             sei.cbSize = sizeof(sei);
-            sei.fMask = SEE_MASK_NOASYNC;
+            sei.fMask = SEE_MASK_NOCLOSEPROCESS;
             sei.lpVerb = L"runas";
             sei.lpFile = exe.c_str();
             sei.lpParameters = args.c_str();
             sei.nShow = SW_SHOWNORMAL;
-            ShellExecuteExW(&sei);
-            status->message = "UAC 确认后将在新窗口中自动创建";
+            const BOOL launched = ShellExecuteExW(&sei);
+            if (launched && sei.hProcess) CloseHandle(sei.hProcess);
+            status->message = launched ? "UAC 确认后将在新窗口自动完成注册" : "无法启动提升进程";
             status->inProgress = false;
             m_status.store(status);
             m_impl->opRunning.store(false);

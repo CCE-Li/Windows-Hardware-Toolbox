@@ -70,6 +70,15 @@ public:
     VirtualCameraController& virtualCamera() { return *m_virtualCamera; }
     const VirtualCameraController& virtualCamera() const { return *m_virtualCamera; }
 
+    enum class VcameraAction { None, Register, Unregister };
+    void setPendingVcameraAction(VcameraAction action, const std::string& name) {
+        m_pendingVcamAction = action;
+        m_pendingVcamName = name;
+    }
+    VcameraAction pendingVcameraAction() const { return m_pendingVcamAction; }
+    const std::string& pendingVcameraName() const { return m_pendingVcamName; }
+    void clearPendingVcameraAction() { m_pendingVcamAction = VcameraAction::None; }
+
     void startCameraOutput(const CameraOutputParams& params) { m_cameraOutput->start(params); }
     void updateCameraOutput(const CameraOutputParams& params) { m_cameraOutput->updateParams(params); }
     void stopCameraOutput() { m_cameraOutput->stop(); }
@@ -103,6 +112,9 @@ private:
     std::unique_ptr<DisplayProvider> m_display;
     std::unique_ptr<VirtualCameraController> m_virtualCamera;
     std::unique_ptr<VideoTransformPipeline> m_cameraOutput;
+
+    VcameraAction m_pendingVcamAction = VcameraAction::None;
+    std::string m_pendingVcamName;
 
     std::atomic<std::chrono::steady_clock::time_point> m_lastRefresh{};
 };

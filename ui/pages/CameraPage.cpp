@@ -14,6 +14,19 @@ void CameraPage::draw(UiContext& ctx) {
     ImGui::Separator();
     ImGui::Spacing();
 
+    const auto pendingAction = ctx.service.pendingVcameraAction();
+    if (pendingAction != HardwareService::VcameraAction::None) {
+        const std::string name = ctx.service.pendingVcameraName();
+        if (ctx.service.isElevated()) {
+            if (pendingAction == HardwareService::VcameraAction::Register) {
+                ctx.service.createVirtualCamera(name);
+            } else {
+                ctx.service.removeVirtualCamera();
+            }
+        }
+        ctx.service.clearPendingVcameraAction();
+    }
+
     auto cameras = ctx.service.camera().snapshot();
     if (!cameras) {
         ImGui::Text("正在采集...");
