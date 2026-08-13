@@ -44,7 +44,8 @@ HMODULE ensureProviderDll() {
 }
 } // namespace
 
-long VirtualCameraRegistrar::registerVirtualCamera(const std::string& friendlyName) {
+namespace {
+long doRegister(const std::string& friendlyName) {
     HMODULE dll = ensureProviderDll();
     if (!dll) return E_FAIL;
     FreeLibrary(dll);
@@ -69,7 +70,7 @@ long VirtualCameraRegistrar::registerVirtualCamera(const std::string& friendlyNa
     return hr;
 }
 
-long VirtualCameraRegistrar::unregisterVirtualCamera(const std::string& friendlyName) {
+long doUnregister(const std::string& friendlyName) {
     const std::wstring name = toWide(friendlyName);
     const std::wstring clsid = toWide(VirtualCameraController::clsidString());
 
@@ -86,6 +87,34 @@ long VirtualCameraRegistrar::unregisterVirtualCamera(const std::string& friendly
         HTB_ERROR("[vcam] Remove failed: {:#x}", static_cast<unsigned>(hr));
     } else {
         HTB_INFO("[vcam] virtual camera removed: {}", friendlyName);
+    }
+    return hr;
+}
+} // namespace
+
+namespace {
+long sehCodeToHr(DWORD code) {
+    HTB_ERROR("[vcam] exception during virtual camera operation: 0x{:08X}", static_cast<unsigned>(code));
+    return static_cast<long>(0xC0000000L | code);
+}
+} // namespace
+
+long VirtualCameraRegistrar::registerVirtualCamera(const std::string& friendlyName) {
+    long hr = E_FAIL;
+    __try {
+        hr = doRegister(friendlyName);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        hr = sehCodeToHr(GetExceptionCode());
+    }
+    return hr;
+}
+
+long VirtualCameraRegistrar::unregisterVirtualCamera(const std::string& friendlyName) {
+    long hr = E_FAIL;
+    __try {
+        hr = doUnregister(friendlyName);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        hr = sehCodeToHr(GetExceptionCode());
     }
     return hr;
 }
