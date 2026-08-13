@@ -29,12 +29,17 @@ struct GpuInfo {
     Availability usageAvailability = Availability::Unavailable;
     std::string usageSource;
 
+    float engineUsagePercent = 0.0f;
+    Availability engineAvailability = Availability::Unavailable;
+    std::string engineSource;
+
     std::vector<std::string> outputs;
 };
 
 class GpuProvider final : public HardwareProvider {
 public:
     GpuProvider();
+    ~GpuProvider() override;
 
     std::string_view name() const override { return "gpu"; }
     void refresh() override;
@@ -42,7 +47,12 @@ public:
     std::shared_ptr<const std::vector<GpuInfo>> snapshot() const { return m_snapshot.load(); }
 
 private:
+    void refreshEngineUsage();
+
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
     std::atomic<std::shared_ptr<const std::vector<GpuInfo>>> m_snapshot;
+    float m_engineUsage = 0.0f;
 };
 
 } // namespace htb

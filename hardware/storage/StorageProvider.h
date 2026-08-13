@@ -47,6 +47,14 @@ struct StorageDisk {
     NvmeHealth nvme;
 };
 
+struct DiskActivity {
+    Availability availability = Availability::Unavailable;
+    std::string source = "PDH";
+    float diskTimePercent = 0.0f;
+    double readBps = 0.0;
+    double writeBps = 0.0;
+};
+
 class StorageProvider final : public HardwareProvider {
 public:
     StorageProvider();
@@ -56,11 +64,15 @@ public:
     void refresh() override;
 
     std::shared_ptr<const std::vector<StorageDisk>> snapshot() const { return m_snapshot.load(); }
+    std::shared_ptr<const DiskActivity> activity() const { return m_activity.load(); }
 
 private:
+    void refreshActivity();
+
     struct Impl;
     std::unique_ptr<Impl> m_impl;
     std::atomic<std::shared_ptr<const std::vector<StorageDisk>>> m_snapshot;
+    std::atomic<std::shared_ptr<const DiskActivity>> m_activity;
 };
 
 } // namespace htb

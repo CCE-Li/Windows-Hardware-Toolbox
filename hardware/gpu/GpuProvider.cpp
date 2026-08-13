@@ -5,8 +5,13 @@
 #include <cwctype>
 #include <dxgi.h>
 #include <dxgi1_4.h>
+#include <pdh.h>
+#include <pdhmsg.h>
 #include <windows.h>
 #include <wrl/client.h>
+
+#include <algorithm>
+#include <memory>
 
 using Microsoft::WRL::ComPtr;
 
@@ -63,7 +68,18 @@ void queryDriverInfo(GpuInfo& gpu, uint32_t vid, uint32_t did) {
 }
 } // namespace
 
-GpuProvider::GpuProvider() = default;
+struct GpuProvider::Impl {
+    PDH_HQUERY engineQuery = nullptr;
+    PDH_HCOUNTER engineCounter = nullptr;
+    bool engineReady = false;
+    bool engineSeeded = false;
+};
+
+GpuProvider::GpuProvider() : m_impl(std::make_unique<Impl>()) {}
+
+GpuProvider::~GpuProvider() {
+    if (m_impl->engineQuery) PdhCloseQuery(m_impl->engineQuery);
+}
 
 void GpuProvider::refresh() {
     auto adapters = std::make_shared<std::vector<GpuInfo>>();
@@ -120,7 +136,63 @@ void GpuProvider::refresh() {
                  gpu.dedicatedVramBytes, gpu.driverVersion.empty() ? "N/A" : gpu.driverVersion);
         adapters->push_back(std::move(gpu));
     }
+
+    refreshEngineUsage();
+    if (!adapters->empty() && m_impl->engineReady) {
+        adapters->front().engineUsagePercent = m_engineUsage;
+        adapters->front().engineAvailability = Availability::Available;
+        adapters->front().engineSource = "PDH (GPU Engine)";
+        HTB_DEBUG("[gpu] GPU engine utilization: {:.1f}%", m_engineUsage);
+    }
+
     m_snapshot.store(std::move(adapters));
+}
+
+void GpuProvider::refreshEngineUsage() {
+    if (!m_impl->engineReady) {
+        if (m_impl->engineQuery == nullptr) {
+            if (PdhOpenQueryW(nullptr, 0, &m_impl->engineQuery) != ERROR_SUCCESS) {
+                HTB_WARN("[gpu] PDH open failed; GPU engine usage unavailable");
+                return;
+            }
+            const PDH_STATUS st = PdhAddEnglishCounterW(
+                m_impl->engineQuery, L"\\GPU Engine(*)\\Utilization Percentage", 0, &m_impl->engineCounter);
+            if (st != ERROR_SUCCESS) {
+                HTB_DEBUG("[gpu] GPU Engine counters unavailable ({:#x}); engine usage marked Unavailable",
+                          static_cast<unsigned>(st));
+                PdhCloseQuery(m_impl->engineQuery);
+                m_impl->engineQuery = nullptr;
+                return;
+            }
+            m_impl->engineReady = true;
+        }
+    }
+    if (!m_impl->engineReady || m_impl->engineQuery == nullptr) return;
+    if (!m_impl->engineSeeded) {
+        m_impl->engineSeeded = true;
+        PdhCollectQueryData(m_impl->engineQuery);
+        return;
+    }
+    if (PdhCollectQueryData(m_impl->engineQuery) != ERROR_SUCCESS) return;
+
+    DWORD bufferSize = 0;
+    DWORD itemCount = 0;
+    PDH_STATUS st = PdhGetFormattedCounterArrayW(m_impl->engineCounter, PDH_FMT_DOUBLE, &bufferSize, &itemCount,
+                                                 nullptr);
+    if (st != PDH_MORE_DATA || bufferSize == 0) return;
+
+    std::vector<uint8_t> buffer(bufferSize);
+    auto* items = reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(buffer.data());
+    st = PdhGetFormattedCounterArrayW(m_impl->engineCounter, PDH_FMT_DOUBLE, &bufferSize, &itemCount, items);
+    if (st != ERROR_SUCCESS) return;
+
+    double total = 0.0;
+    for (DWORD i = 0; i < itemCount; ++i) {
+        if (items[i].FmtValue.CStatus == ERROR_SUCCESS) {
+            total += items[i].FmtValue.doubleValue;
+        }
+    }
+    m_engineUsage = static_cast<float>(total);
 }
 
 } // namespace htb

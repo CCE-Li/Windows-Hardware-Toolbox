@@ -6,8 +6,10 @@
 #include <devioctl.h>
 #include <ntddstor.h>
 #include <nvme.h>
+#include <pdh.h>
 #include <windows.h>
 
+#include <chrono>
 #include <map>
 #include <string>
 #include <vector>
@@ -147,11 +149,87 @@ std::string healthName(uint16_t health) {
 
 struct StorageProvider::Impl {
     std::unique_ptr<WmiSession> wmi;
+
+    PDH_HQUERY activityQuery = nullptr;
+    PDH_HCOUNTER timeCounter = nullptr;
+    PDH_HCOUNTER readCounter = nullptr;
+    PDH_HCOUNTER writeCounter = nullptr;
+    bool activityReady = false;
+    bool activitySeeded = false;
+    std::chrono::steady_clock::time_point activityTime;
+    double prevRead = 0.0;
+    double prevWrite = 0.0;
 };
 
 StorageProvider::StorageProvider() : m_impl(std::make_unique<Impl>()) {}
 
-StorageProvider::~StorageProvider() = default;
+StorageProvider::~StorageProvider() {
+    if (m_impl->activityQuery) PdhCloseQuery(m_impl->activityQuery);
+}
+
+void StorageProvider::refreshActivity() {
+    if (!m_impl->activityReady) {
+        if (m_impl->activityQuery == nullptr) {
+            if (PdhOpenQueryW(nullptr, 0, &m_impl->activityQuery) != ERROR_SUCCESS) {
+                HTB_WARN("[storage] PDH open failed; disk activity unavailable");
+                return;
+            }
+            auto add = [&](const wchar_t* path, PDH_HCOUNTER& counter) {
+                return PdhAddEnglishCounterW(m_impl->activityQuery, path, 0, &counter) == ERROR_SUCCESS;
+            };
+            if (!add(L"\\PhysicalDisk(_Total)\\% Disk Time", m_impl->timeCounter) ||
+                !add(L"\\PhysicalDisk(_Total)\\Disk Read Bytes/sec", m_impl->readCounter) ||
+                !add(L"\\PhysicalDisk(_Total)\\Disk Write Bytes/sec", m_impl->writeCounter)) {
+                HTB_DEBUG("[storage] PhysicalDisk counters unavailable; activity marked Unavailable");
+                PdhCloseQuery(m_impl->activityQuery);
+                m_impl->activityQuery = nullptr;
+                return;
+            }
+            m_impl->activityReady = true;
+        }
+    }
+    if (!m_impl->activityReady || m_impl->activityQuery == nullptr) return;
+    if (!m_impl->activitySeeded) {
+        m_impl->activitySeeded = true;
+        m_impl->activityTime = std::chrono::steady_clock::now();
+        PdhCollectQueryData(m_impl->activityQuery);
+        return;
+    }
+    if (PdhCollectQueryData(m_impl->activityQuery) != ERROR_SUCCESS) return;
+
+    auto activity = std::make_shared<DiskActivity>();
+
+    PDH_FMT_COUNTERVALUE value{};
+    if (PdhGetFormattedCounterValue(m_impl->timeCounter, PDH_FMT_DOUBLE, nullptr, &value) == ERROR_SUCCESS) {
+        activity->diskTimePercent = static_cast<float>(value.doubleValue);
+        if (activity->diskTimePercent < 0.0f) activity->diskTimePercent = 0.0f;
+        if (activity->diskTimePercent > 100.0f) activity->diskTimePercent = 100.0f;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const double dt = std::chrono::duration<double>(now - m_impl->activityTime).count();
+    m_impl->activityTime = now;
+    double readBytes = 0.0;
+    double writeBytes = 0.0;
+    if (PdhGetFormattedCounterValue(m_impl->readCounter, PDH_FMT_DOUBLE, nullptr, &value) == ERROR_SUCCESS)
+        readBytes = value.doubleValue;
+    if (PdhGetFormattedCounterValue(m_impl->writeCounter, PDH_FMT_DOUBLE, nullptr, &value) == ERROR_SUCCESS)
+        writeBytes = value.doubleValue;
+    if (dt > 0.01) {
+        activity->readBps = (readBytes - m_impl->prevRead) / dt;
+        activity->writeBps = (writeBytes - m_impl->prevWrite) / dt;
+        if (activity->readBps < 0.0) activity->readBps = 0.0;
+        if (activity->writeBps < 0.0) activity->writeBps = 0.0;
+    }
+    m_impl->prevRead = readBytes;
+    m_impl->prevWrite = writeBytes;
+
+    activity->availability = Availability::Available;
+    activity->source = "PDH (PhysicalDisk)";
+    HTB_DEBUG("[storage] disk activity: {:.1f}%, read {:.0f} B/s, write {:.0f} B/s", activity->diskTimePercent,
+              activity->readBps, activity->writeBps);
+    m_activity.store(std::move(activity));
+}
 
 void StorageProvider::refresh() {
     auto disks = std::make_shared<std::vector<StorageDisk>>();
@@ -238,6 +316,7 @@ void StorageProvider::refresh() {
 
     HTB_INFO("[storage] {} disk(s) reported by WMI", disks->size());
     m_snapshot.store(std::move(disks));
+    refreshActivity();
 }
 
 } // namespace htb

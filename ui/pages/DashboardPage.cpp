@@ -1,12 +1,15 @@
 #include "ui/pages/DashboardPage.h"
 
 #include <chrono>
+#include <cstdio>
 #include <functional>
 #include <string>
 
 #include "core/runtime/SystemInfo.h"
+#include "hardware/network/NetworkProvider.h"
 #include "hardware/storage/StorageProvider.h"
 #include "ui/Format.h"
+#include "ui/widgets/HistoryChart.h"
 
 #include "imgui.h"
 
@@ -19,6 +22,10 @@ void drawTile(const char* id, const char* label, const ImVec2& size, const std::
     ImGui::Separator();
     body();
     ImGui::EndChild();
+}
+
+std::string formatRate(double bps) {
+    return formatBytes(static_cast<uint64_t>(bps)) + "/s";
 }
 } // namespace
 
@@ -132,6 +139,63 @@ void DashboardPage::draw(UiContext& ctx) {
         ImGui::Text("状态: %s", battery->status.empty() ? "-" : battery->status.c_str());
         if (!battery->name.empty()) ImGui::TextDisabled("%s", battery->name.c_str());
     });
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextDisabled("性能图表");
+    ImGui::Separator();
+
+    static HistoryChart chartCpu;
+    static HistoryChart chartMemory;
+    static HistoryChart chartGpu;
+    static HistoryChart chartDisk;
+    static HistoryChart chartNetDown;
+    static HistoryChart chartNetUp;
+
+    const double now = std::chrono::duration<double>(
+                           std::chrono::steady_clock::now().time_since_epoch())
+                           .count();
+
+    if (cpu && cpu->usageAvailability == Availability::Available) chartCpu.sample(cpu->totalUsage, now);
+    if (mem) chartMemory.sample(mem->loadPercent, now);
+    if (gpus && !gpus->empty()) {
+        const GpuInfo& gpu = gpus->front();
+        if (gpu.engineAvailability == Availability::Available) chartGpu.sample(gpu.engineUsagePercent, now);
+    }
+    if (disks) {
+        const auto activity = ctx.service.storage().activity();
+        if (activity && activity->availability == Availability::Available) chartDisk.sample(activity->diskTimePercent, now);
+    }
+    {
+        const auto adapters = ctx.service.network().snapshot();
+        if (adapters) {
+            const NetworkAdapter* best = nullptr;
+            for (const NetworkAdapter& a : *adapters) {
+                if (a.rxRateBps > 0.0 && (!best || a.rxRateBps > best->rxRateBps)) best = &a;
+            }
+            if (best) {
+                chartNetDown.sample(best->rxRateBps, now);
+                chartNetUp.sample(best->txRateBps, now);
+            }
+        }
+    }
+
+    char text[128];
+    snprintf(text, sizeof(text), "使用率 %.1f%%", chartCpu.lastValue());
+    chartCpu.draw("CPU", 110.0f, 100.0f, true, text, "峰值 " + std::to_string(static_cast<int>(chartCpu.maxInWindow())) + "%");
+    snprintf(text, sizeof(text), "使用率 %.1f%%", chartMemory.lastValue());
+    chartMemory.draw("内存", 110.0f, 100.0f, true, text,
+                     "峰值 " + std::to_string(static_cast<int>(chartMemory.maxInWindow())) + "%");
+    snprintf(text, sizeof(text), "使用率 %.1f%%", chartGpu.lastValue());
+    chartGpu.draw("GPU", 110.0f, 100.0f, true, text,
+                  "峰值 " + std::to_string(static_cast<int>(chartGpu.maxInWindow())) + "%");
+    snprintf(text, sizeof(text), "使用率 %.1f%%", chartDisk.lastValue());
+    chartDisk.draw("磁盘", 110.0f, 100.0f, true, text,
+                   "峰值 " + std::to_string(static_cast<int>(chartDisk.maxInWindow())) + "%");
+    snprintf(text, sizeof(text), "下行 %s", formatRate(chartNetDown.lastValue()).c_str());
+    chartNetDown.draw("网络 (下行)", 110.0f, 0.0f, false, text, "");
+    snprintf(text, sizeof(text), "上行 %s", formatRate(chartNetUp.lastValue()).c_str());
+    chartNetUp.draw("网络 (上行)", 110.0f, 0.0f, false, text, "");
+
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextDisabled("监控");
