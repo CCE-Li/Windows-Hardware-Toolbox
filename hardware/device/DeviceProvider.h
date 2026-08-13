@@ -3,8 +3,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "hardware/HardwareProvider.h"
@@ -34,6 +36,13 @@ struct DeviceInfo {
     bool disabled = false;
 };
 
+struct DeviceOperationResult {
+    std::string operation;
+    std::string instanceId;
+    bool success = false;
+    std::string message;
+};
+
 class DeviceProvider final : public HardwareProvider {
 public:
     DeviceProvider();
@@ -46,12 +55,21 @@ public:
     std::shared_ptr<const std::vector<DeviceInfo>> snapshot() const { return m_snapshot.load(); }
     std::chrono::steady_clock::time_point lastEnumTime() const { return m_lastEnum.load(); }
 
+    void setDeviceEnabledAsync(const std::string& instanceId, bool enable);
+    void removeDeviceAsync(const std::string& instanceId);
+    void rescanDevicesAsync();
+    std::shared_ptr<const DeviceOperationResult> lastOperation() const { return m_lastOperation.load(); }
+
 private:
+    void runOperation(const std::string& operation, const std::string& instanceId,
+                      const std::function<std::pair<bool, std::string>()>& task);
+
     struct Impl;
     std::unique_ptr<Impl> m_impl;
     std::atomic<std::shared_ptr<const std::vector<DeviceInfo>>> m_snapshot;
     std::atomic<std::chrono::steady_clock::time_point> m_lastEnum{};
     std::atomic<bool> m_force{false};
+    std::atomic<std::shared_ptr<const DeviceOperationResult>> m_lastOperation;
 };
 
 } // namespace htb

@@ -10,6 +10,7 @@
 #include <setupapi.h>
 
 #include <cwchar>
+#include <string_view>
 
 #ifndef DN_DISABLED
 #define DN_DISABLED 0x00000010
@@ -77,11 +78,114 @@ void readDriverInfo(DeviceInfo& info) {
 }
 } // namespace
 
-struct DeviceProvider::Impl {};
+struct DeviceProvider::Impl {
+    std::unique_ptr<std::thread> opThread;
+    std::atomic<bool> opRunning{false};
+};
 
 DeviceProvider::DeviceProvider() = default;
 
-DeviceProvider::~DeviceProvider() = default;
+DeviceProvider::~DeviceProvider() {
+    if (m_impl && m_impl->opThread && m_impl->opThread->joinable()) m_impl->opThread->join();
+}
+
+namespace {
+std::string setupErrorMessage() {
+    wchar_t buf[256]{};
+    const DWORD n = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
+                                   GetLastError(), 0, buf, 256, nullptr);
+    return n > 0 ? toUtf8(std::wstring_view(buf, n)) : "未知错误";
+}
+
+std::pair<bool, std::string> doSetEnabled(const std::string& instanceId, bool enable) {
+    HDEVINFO devs = SetupDiGetClassDevsW(nullptr, toWide(instanceId).c_str(), nullptr,
+                                         DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (devs == INVALID_HANDLE_VALUE) return {false, "无法打开设备信息集"};
+    SP_DEVINFO_DATA spdi{};
+    spdi.cbSize = sizeof(spdi);
+    if (!SetupDiEnumDeviceInfo(devs, 0, &spdi)) {
+        SetupDiDestroyDeviceInfoList(devs);
+        return {false, "设备未找到"};
+    }
+    SP_PROPCHANGE_PARAMS params{};
+    params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+    params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+    params.StateChange = enable ? DICS_ENABLE : DICS_DISABLE;
+    params.Scope = DICS_FLAG_GLOBAL;
+    params.HwProfile = 0;
+    bool ok = SetupDiSetClassInstallParamsW(devs, &spdi, &params.ClassInstallHeader, sizeof(params));
+    if (ok) ok = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, devs, &spdi);
+    const std::string err = ok ? std::string() : setupErrorMessage();
+    SetupDiDestroyDeviceInfoList(devs);
+    return ok ? std::pair<bool, std::string>(true, {}) : std::pair<bool, std::string>(false, err);
+}
+
+std::pair<bool, std::string> doRemove(const std::string& instanceId) {
+    HDEVINFO devs = SetupDiGetClassDevsW(nullptr, toWide(instanceId).c_str(), nullptr,
+                                         DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (devs == INVALID_HANDLE_VALUE) return {false, "无法打开设备信息集"};
+    SP_DEVINFO_DATA spdi{};
+    spdi.cbSize = sizeof(spdi);
+    if (!SetupDiEnumDeviceInfo(devs, 0, &spdi)) {
+        SetupDiDestroyDeviceInfoList(devs);
+        return {false, "设备未找到"};
+    }
+    SP_REMOVEDEVICE_PARAMS params{};
+    params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+    params.ClassInstallHeader.InstallFunction = DIF_REMOVE;
+    params.Scope = DI_REMOVEDEVICE_GLOBAL;
+    params.HwProfile = 0;
+    bool ok = SetupDiSetClassInstallParamsW(devs, &spdi, &params.ClassInstallHeader, sizeof(params));
+    if (ok) ok = SetupDiCallClassInstaller(DIF_REMOVE, devs, &spdi);
+    const std::string err = ok ? std::string() : setupErrorMessage();
+    SetupDiDestroyDeviceInfoList(devs);
+    return ok ? std::pair<bool, std::string>(true, {}) : std::pair<bool, std::string>(false, err);
+}
+
+std::pair<bool, std::string> doRescan() {
+    DEVINST root = 0;
+    if (CM_Locate_DevNodeW(&root, nullptr, 0) != CR_SUCCESS) return {false, "无法定位根设备节点"};
+    const CONFIGRET cr = CM_Reenumerate_DevNode(root, CM_REENUMERATE_SYNCHRONOUS);
+    return cr == CR_SUCCESS ? std::pair<bool, std::string>(true, {})
+                            : std::pair<bool, std::string>(false, "重新扫描失败");
+}
+} // namespace
+
+void DeviceProvider::runOperation(const std::string& operation, const std::string& instanceId,
+                                  const std::function<std::pair<bool, std::string>()>& task) {
+    if (m_impl->opRunning.exchange(true)) return;
+    m_impl->opThread = std::make_unique<std::thread>([this, operation, instanceId, task] {
+        auto result = std::make_shared<DeviceOperationResult>();
+        result->operation = operation;
+        result->instanceId = instanceId;
+        auto outcome = task();
+        result->success = outcome.first;
+        result->message = outcome.second;
+        m_lastOperation.store(result);
+        if (result->success) {
+            HTB_INFO("[device] {} succeeded: {} {}", operation, instanceId,
+                     result->message.empty() ? "" : result->message);
+            m_force.store(true);
+        } else {
+            HTB_ERROR("[device] {} failed for {}: {}", operation, instanceId, result->message);
+        }
+        m_impl->opRunning.store(false);
+    });
+}
+
+void DeviceProvider::setDeviceEnabledAsync(const std::string& instanceId, bool enable) {
+    runOperation(enable ? "启用设备" : "禁用设备", instanceId, [instanceId, enable] {
+        return doSetEnabled(instanceId, enable);
+    });
+}
+
+void DeviceProvider::removeDeviceAsync(const std::string& instanceId) {
+    runOperation("卸载设备", instanceId, [instanceId] { return doRemove(instanceId); });
+}
+
+void DeviceProvider::rescanDevicesAsync() {
+    runOperation("扫描硬件更改", "", [] { return doRescan(); });
+}
 
 void DeviceProvider::requestRefresh() {
     m_force.store(true);

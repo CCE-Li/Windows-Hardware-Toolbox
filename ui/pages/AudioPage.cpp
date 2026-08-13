@@ -1,8 +1,10 @@
 #include "ui/pages/AudioPage.h"
 
+#include <cmath>
 #include <string>
 
 #include "hardware/audio/AudioProvider.h"
+#include "ui/Format.h"
 
 #include "imgui.h"
 
@@ -19,6 +21,32 @@ void AudioPage::draw(UiContext& ctx) {
         return;
     }
 
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("音量控制 (默认播放设备)");
+    ImGui::Separator();
+    const auto volume = ctx.service.audio().volume();
+    if (!volume || volume->availability != Availability::Available) {
+        ImGui::Text("系统音量 %s", availabilityLabel(volume ? volume->availability : Availability::Unavailable).c_str());
+    } else {
+        static float lastSet = -1.0f;
+        float level = volume->level;
+        if (ImGui::SliderFloat("音量", &level, 0.0f, 1.0f, "%.0f%%")) {
+            if (lastSet < 0.0f || std::abs(level - lastSet) > 0.01f) {
+                ctx.service.setVolumeAsync(level, false);
+                lastSet = level;
+            }
+        }
+        bool muted = volume->muted;
+        if (ImGui::Checkbox("静音", &muted)) {
+            ctx.service.setVolumeAsync(volume->level, muted);
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("来源: %s", volume->source.c_str());
+    }
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("音频端点");
     ImGui::BeginChild("audio_body", ImVec2(0, 0));
     if (endpoints->empty()) {
         ImGui::Text("未检测到音频端点");

@@ -45,6 +45,22 @@ public:
     void runPingTest(const std::string& target, int count) { m_network->runPingTest(target, count); }
     void runDnsTest(const std::string& host) { m_network->runDnsTest(host); }
 
+    bool isElevated() const;
+    void relaunchAsAdmin();
+
+    void setDeviceEnabledAsync(const std::string& instanceId, bool enable) {
+        m_device->setDeviceEnabledAsync(instanceId, enable);
+    }
+    void removeDeviceAsync(const std::string& instanceId) { m_device->removeDeviceAsync(instanceId); }
+    void rescanDevicesAsync() { m_device->rescanDevicesAsync(); }
+
+    void loadDisplayModesAsync(const std::string& deviceName) { m_display->loadModesAsync(deviceName); }
+    void applyDisplayModeAsync(const std::string& deviceName, uint32_t width, uint32_t height,
+                               uint32_t refreshHz) {
+        m_display->applyModeAsync(deviceName, width, height, refreshHz);
+    }
+    void setVolumeAsync(float level, bool muted) { m_audio->setVolumeAsync(level, muted); }
+
     const Config& config() const { return m_config; }
     int intervalMs() const { return m_intervalMs; }
     std::chrono::steady_clock::time_point lastRefresh() const;

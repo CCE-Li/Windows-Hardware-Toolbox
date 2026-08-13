@@ -59,6 +59,15 @@ void DevicesPage::draw(UiContext& ctx) {
     ImGui::SameLine();
     if (ImGui::Button("打开设备管理器")) ctx.service.launchSystemTool("devmgmt");
     ImGui::SameLine();
+    const bool elevated = ctx.service.isElevated();
+    if (ImGui::Button("扫描硬件更改")) ctx.service.rescanDevicesAsync();
+    ImGui::SameLine();
+    if (elevated) {
+        ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f), "管理员模式");
+    } else {
+        ImGui::TextDisabled("设备操作需管理员权限");
+    }
+    ImGui::SameLine();
     ImGui::TextDisabled("%zu 台设备 | %s前枚举 | 来源: SetupAPI", devices->size(),
                         std::to_string(static_cast<int>(secs)).c_str());
 
@@ -105,6 +114,67 @@ void DevicesPage::draw(UiContext& ctx) {
         ImGui::TextColored(ImVec4(0.86f, 0.60f, 0.15f, 1.0f), "%s", d.name.c_str());
         ImGui::SameLine();
         ImGui::TextDisabled("  %s", d.className.c_str());
+
+        static std::string pendingAction;
+        static std::string pendingDevice;
+        if (elevated) {
+            if (ImGui::Button("禁用设备")) {
+                pendingAction = "禁用设备";
+                pendingDevice = d.instanceId;
+                ImGui::OpenPopup("confirm_op");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("启用设备")) {
+                pendingAction = "启用设备";
+                pendingDevice = d.instanceId;
+                ImGui::OpenPopup("confirm_op");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("卸载设备")) {
+                pendingAction = "卸载设备";
+                pendingDevice = d.instanceId;
+                ImGui::OpenPopup("confirm_op");
+            }
+        }
+        if (ImGui::BeginPopupModal("confirm_op", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (!pendingAction.empty()) {
+                if (pendingAction == "卸载设备") {
+                    ImGui::TextWrapped("风险警告：卸载设备 %s 后，其驱动将被移除。\n"
+                                       "重新插拔设备或点击“扫描硬件更改”可重新安装。",
+                                       pendingDevice.c_str());
+                    ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "该操作将写入系统日志，且需要管理员权限。");
+                } else {
+                    ImGui::TextWrapped("确定要%s设备 %s 吗？", pendingAction.c_str(), pendingDevice.c_str());
+                }
+                ImGui::Spacing();
+                if (ImGui::Button("确认")) {
+                    if (pendingAction == "禁用设备") {
+                        ctx.service.setDeviceEnabledAsync(pendingDevice, false);
+                    } else if (pendingAction == "启用设备") {
+                        ctx.service.setDeviceEnabledAsync(pendingDevice, true);
+                    } else if (pendingAction == "卸载设备") {
+                        ctx.service.removeDeviceAsync(pendingDevice);
+                    }
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("取消")) {
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::EndPopup();
+        }
+
+        const auto op = ctx.service.device().lastOperation();
+        if (op && !op->operation.empty()) {
+            ImGui::SameLine();
+            if (op->success) {
+                ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f), "%s成功", op->operation.c_str());
+            } else {
+                ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s失败: %s", op->operation.c_str(),
+                                   op->message.c_str());
+            }
+        }
 
         std::string hwIdsJoined;
         for (const auto& id : d.hardwareIds) {

@@ -263,6 +263,9 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
 
     htb::Config config = htb::Config::load();
     HTB_INFO("[app] Hardware Toolbox v{} starting", HTB_VERSION_STRING);
+    if (cmdLine && wcsstr(cmdLine, L"--elevated")) {
+        HTB_INFO("[app] running with administrator privileges");
+    }
 
     htb::HardwareService service(std::move(config));
     service.start();

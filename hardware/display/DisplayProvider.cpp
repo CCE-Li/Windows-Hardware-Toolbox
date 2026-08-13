@@ -116,7 +116,74 @@ EdidData readEdidForMonitor(const std::wstring& monitorId) {
 }
 } // namespace
 
+struct DisplayProvider::Impl {
+    std::unique_ptr<std::thread> opThread;
+    std::atomic<bool> opRunning{false};
+};
+
 DisplayProvider::DisplayProvider() = default;
+
+DisplayProvider::~DisplayProvider() {
+    if (m_impl && m_impl->opThread && m_impl->opThread->joinable()) m_impl->opThread->join();
+}
+
+void DisplayProvider::loadModesAsync(const std::string& deviceName) {
+    if (m_impl->opRunning.exchange(true)) return;
+    m_impl->opThread = std::make_unique<std::thread>([this, deviceName] {
+        auto result = std::make_shared<DisplayModeResult>();
+        result->deviceName = deviceName;
+        const std::wstring dev = toWide(deviceName);
+        for (DWORD i = 0;; ++i) {
+            DEVMODEW dm{};
+            dm.dmSize = sizeof(dm);
+            if (!EnumDisplaySettingsW(dev.c_str(), i, &dm)) break;
+            if (dm.dmPelsWidth == 0 || dm.dmPelsHeight == 0) continue;
+            DisplayMode mode;
+            mode.width = dm.dmPelsWidth;
+            mode.height = dm.dmPelsHeight;
+            mode.refreshHz = dm.dmDisplayFrequency;
+            result->modes.push_back(mode);
+        }
+        m_modesResult.store(std::move(result));
+        m_impl->opRunning.store(false);
+        HTB_INFO("[display] {} modes loaded for {}", result->modes.size(), deviceName);
+    });
+}
+
+void DisplayProvider::applyModeAsync(const std::string& deviceName, uint32_t width, uint32_t height,
+                                     uint32_t refreshHz) {
+    if (m_impl->opRunning.exchange(true)) return;
+    m_impl->opThread = std::make_unique<std::thread>([this, deviceName, width, height, refreshHz] {
+        auto result = std::make_shared<DisplayApplyResult>();
+        result->deviceName = deviceName;
+
+        DEVMODEW dm{};
+        dm.dmSize = sizeof(dm);
+        dm.dmPelsWidth = width;
+        dm.dmPelsHeight = height;
+        dm.dmDisplayFrequency = refreshHz;
+        dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
+
+        LONG rc = ChangeDisplaySettingsExW(toWide(deviceName).c_str(), &dm, nullptr, CDS_TEST, nullptr);
+        if (rc != DISP_CHANGE_SUCCESSFUL) {
+            result->message = "模式不受支持 (错误码 " + std::to_string(rc) + ")";
+            m_applyResult.store(std::move(result));
+            m_impl->opRunning.store(false);
+            HTB_WARN("[display] mode test failed for {}: {}", deviceName, result->message);
+            return;
+        }
+        rc = ChangeDisplaySettingsExW(toWide(deviceName).c_str(), &dm, nullptr, 0, nullptr);
+        result->success = rc == DISP_CHANGE_SUCCESSFUL;
+        result->message = result->success ? "已应用" : ("应用失败 (错误码 " + std::to_string(rc) + ")");
+        m_applyResult.store(std::move(result));
+        m_impl->opRunning.store(false);
+        if (result->success) {
+            HTB_INFO("[display] applied {}x{}@{} to {}", width, height, refreshHz, deviceName);
+        } else {
+            HTB_ERROR("[display] apply failed for {}: {}", deviceName, result->message);
+        }
+    });
+}
 
 void DisplayProvider::refresh() {
     auto displays = std::make_shared<std::vector<DisplayInfo>>();

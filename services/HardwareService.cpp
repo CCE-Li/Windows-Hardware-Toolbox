@@ -1,4 +1,5 @@
 #include "core/logging/Logger.h"
+#include "core/runtime/Privileges.h"
 #include "services/HardwareService.h"
 
 #include <combaseapi.h>
@@ -80,6 +81,24 @@ void HardwareService::loop() {
 
 std::chrono::steady_clock::time_point HardwareService::lastRefresh() const {
     return m_lastRefresh.load();
+}
+
+bool HardwareService::isElevated() const {
+    return htb::isElevated();
+}
+
+void HardwareService::relaunchAsAdmin() {
+    wchar_t exePath[MAX_PATH]{};
+    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) == 0) {
+        HTB_ERROR("[service] GetModuleFileNameW failed; cannot relaunch");
+        return;
+    }
+    const HINSTANCE r = ShellExecuteW(nullptr, L"runas", exePath, L"--elevated", nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(r) <= 32) {
+        HTB_ERROR("[service] UAC relaunch failed: {:#x}", static_cast<unsigned>(reinterpret_cast<INT_PTR>(r)));
+    } else {
+        HTB_INFO("[service] relaunching elevated");
+    }
 }
 
 bool HardwareService::launchSystemTool(const std::string& tool) {

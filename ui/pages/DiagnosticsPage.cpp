@@ -155,7 +155,19 @@ void DiagnosticsPage::draw(UiContext& ctx) {
     if (ImGui::Button("网络连接")) ctx.service.launchSystemTool("ncpa");
     ImGui::SameLine();
     if (ImGui::Button("任务管理器")) ctx.service.launchSystemTool("taskmgr");
-    ImGui::TextDisabled("需要管理员权限的组件由系统自动提示 (UAC)。");
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("设备操作权限");
+    ImGui::Separator();
+    if (ctx.service.isElevated()) {
+        ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f), "当前以管理员权限运行，可在“设备”页启用/禁用/卸载设备。");
+    } else {
+        ImGui::TextWrapped("启用/禁用/卸载设备等系统级操作需要管理员权限。"
+                           "点击下方按钮以管理员身份重新启动本程序 (UAC 提示)。");
+        if (ImGui::Button("以管理员身份重新启动")) ctx.service.relaunchAsAdmin();
+    }
+    ImGui::TextDisabled("所有设备操作均记录到日志，卸载操作需在弹窗中确认。");
 
     ImGui::EndChild();
 }
