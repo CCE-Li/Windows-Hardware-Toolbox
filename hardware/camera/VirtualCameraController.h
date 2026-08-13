@@ -23,12 +23,15 @@ public:
 
     void create(const std::string& friendlyName);
     void remove();
+    void pollPendingResult(const std::string& operation);
     std::shared_ptr<const VirtualCameraStatus> lastStatus() const { return m_status.load(); }
 
     static std::string clsidString();
+    static std::string resultFilePath();
 
 private:
     void run(const std::string& operation, const std::string& friendlyName);
+    void checkResultFile(const std::string& operation);
 
     struct Impl;
     std::unique_ptr<Impl> m_impl;

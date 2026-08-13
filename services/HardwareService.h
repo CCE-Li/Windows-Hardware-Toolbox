@@ -67,6 +67,7 @@ public:
         m_virtualCamera->create(friendlyName);
     }
     void removeVirtualCamera() { m_virtualCamera->remove(); }
+    VirtualCameraController& virtualCamera() { return *m_virtualCamera; }
     const VirtualCameraController& virtualCamera() const { return *m_virtualCamera; }
 
     void startCameraOutput(const CameraOutputParams& params) { m_cameraOutput->start(params); }

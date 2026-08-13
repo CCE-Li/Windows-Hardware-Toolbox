@@ -29,49 +29,37 @@ void CameraPage::draw(UiContext& ctx) {
         if (nameBuf[0] == '\0') {
             snprintf(nameBuf, sizeof(nameBuf), "%s", "Hardware Toolbox 虚拟摄像头");
         }
-        const bool elevated = ctx.service.isElevated();
 
         ImGui::SetNextItemWidth(320.0f);
         ImGui::InputText("名称", nameBuf, sizeof(nameBuf));
         ImGui::SameLine();
-        static bool pendingAction = false;
+        static bool pendingElevation = false;
+        static std::string pendingOperation;
         if (ImGui::Button("创建虚拟摄像头")) {
-            if (elevated) {
-                ctx.service.createVirtualCamera(nameBuf);
-            } else {
-                pendingAction = true;
-                ImGui::OpenPopup("admin_confirm");
+            ctx.service.createVirtualCamera(nameBuf);
+            if (!ctx.service.isElevated()) {
+                pendingElevation = true;
+                pendingOperation = "创建虚拟摄像头";
             }
         }
         ImGui::SameLine();
         if (ImGui::Button("移除虚拟摄像头")) {
-            if (elevated) {
-                ctx.service.removeVirtualCamera();
-            } else {
-                pendingAction = true;
-                ImGui::OpenPopup("admin_confirm");
+            ctx.service.removeVirtualCamera();
+            if (!ctx.service.isElevated()) {
+                pendingElevation = true;
+                pendingOperation = "移除虚拟摄像头";
             }
         }
-        if (ImGui::BeginPopupModal("admin_confirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-            if (pendingAction) {
-                ImGui::TextWrapped("创建 / 移除虚拟摄像头需要管理员权限。\n是否以管理员身份重新启动本程序？");
-                ImGui::Spacing();
-                if (ImGui::Button("确认")) {
-                    ctx.service.relaunchAsAdmin("camera");
-                    ImGui::CloseCurrentPopup();
-                    pendingAction = false;
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("取消")) {
-                    ImGui::CloseCurrentPopup();
-                    pendingAction = false;
-                }
+        if (pendingElevation) {
+            ctx.service.virtualCamera().pollPendingResult(pendingOperation);
+            const auto pending = ctx.service.virtualCamera().lastStatus();
+            if (pending && !pending->inProgress && !pending->operation.empty()) {
+                pendingElevation = false;
             }
-            ImGui::EndPopup();
         }
-        if (!elevated) {
+        if (!ctx.service.isElevated()) {
             ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f),
-                               "当前未以管理员运行：点击上方按钮将弹出 UAC 提升提示。");
+                               "点击后将弹出 UAC 提升提示，确认后在新窗口自动完成注册。");
         }
 
         const auto status = ctx.service.virtualCamera().lastStatus();
@@ -81,7 +69,7 @@ void CameraPage::draw(UiContext& ctx) {
             } else if (status->success) {
                 ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f), "%s成功", status->operation.c_str());
             } else {
-                ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s%s", status->operation.c_str(),
+                ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s: %s", status->operation.c_str(),
                                    status->message.c_str());
             }
         }

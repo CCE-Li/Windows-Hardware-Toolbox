@@ -1,27 +1,30 @@
 #include "core/logging/Logger.h"
+#include "core/runtime/Privileges.h"
 #include "core/util/Utf.h"
 #include "hardware/camera/VirtualCameraController.h"
+#include "hardware/camera/VirtualCameraRegistrar.h"
 
 #include <windows.h>
 #include <shellapi.h>
 
-#include <functional>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 
 namespace htb {
 
 namespace {
-std::string hrText(long hr) {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(hr));
-    return buf;
-}
-
 std::string modulePath() {
     wchar_t path[MAX_PATH]{};
     GetModuleFileNameW(nullptr, path, MAX_PATH);
     return toUtf8(path);
+}
+
+std::string tempDir() {
+    wchar_t buf[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, buf);
+    return toUtf8(buf);
 }
 } // namespace
 
@@ -41,6 +44,32 @@ std::string VirtualCameraController::clsidString() {
     return "{7D8E9F3A-2C4B-4E5F-9A1C-3D2B6E8F4A51}";
 }
 
+std::string VirtualCameraController::resultFilePath() {
+    return tempDir() + "htb_vcam_result.txt";
+}
+
+void VirtualCameraController::checkResultFile(const std::string& operation) {
+    std::ifstream in(resultFilePath());
+    if (!in) return;
+    std::string line;
+    std::getline(in, line);
+    std::string message;
+    std::getline(in, message);
+    if (line.empty()) return;
+
+    auto status = std::make_shared<VirtualCameraStatus>();
+    status->operation = operation;
+    status->friendlyName = m_impl->friendlyName;
+    status->success = line == "success";
+    status->message = message.empty() ? (status->success ? "成功" : "失败") : message;
+    m_status.store(status);
+    std::filesystem::remove(resultFilePath());
+}
+
+void VirtualCameraController::pollPendingResult(const std::string& operation) {
+    checkResultFile(operation);
+}
+
 void VirtualCameraController::run(const std::string& operation, const std::string& friendlyName) {
     if (m_impl->opRunning.exchange(true)) return;
     m_impl->opThread = std::make_unique<std::thread>([this, operation, friendlyName] {
@@ -50,39 +79,37 @@ void VirtualCameraController::run(const std::string& operation, const std::strin
         status->inProgress = true;
         m_status.store(status);
 
-        const std::wstring exe = toWide(modulePath());
-        std::wstring args = operation == "创建虚拟摄像头" ? L"--register-vcamera" : L"--unregister-vcamera";
-        args += L" \"" + toWide(friendlyName) + L"\" --console";
+        if (!htb::isElevated()) {
+            const std::wstring exe = toWide(modulePath());
+            std::wstring args = operation == "创建虚拟摄像头" ? L"--auto-register-vcamera"
+                                                             : L"--auto-unregister-vcamera";
+            args += L" \"" + toWide(friendlyName) + L"\" --elevated --page=camera";
 
-        SHELLEXECUTEINFOW sei{};
-        sei.cbSize = sizeof(sei);
-        sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
-        sei.lpVerb = L"open";
-        sei.lpFile = exe.c_str();
-        sei.lpParameters = args.c_str();
-        sei.nShow = SW_HIDE;
-
-        const BOOL launched = ShellExecuteExW(&sei);
-        if (!launched || !sei.hProcess) {
-            status->message = "无法启动注册进程";
+            SHELLEXECUTEINFOW sei{};
+            sei.cbSize = sizeof(sei);
+            sei.fMask = SEE_MASK_NOASYNC;
+            sei.lpVerb = L"runas";
+            sei.lpFile = exe.c_str();
+            sei.lpParameters = args.c_str();
+            sei.nShow = SW_SHOWNORMAL;
+            ShellExecuteExW(&sei);
+            status->message = "UAC 确认后将在新窗口中自动创建";
             status->inProgress = false;
             m_status.store(status);
             m_impl->opRunning.store(false);
             return;
         }
 
-        const DWORD wait = WaitForSingleObject(sei.hProcess, 60000);
-        DWORD exitCode = 1;
-        GetExitCodeProcess(sei.hProcess, &exitCode);
-        CloseHandle(sei.hProcess);
-
-        if (wait == WAIT_TIMEOUT) {
-            status->message = "注册进程超时";
-        } else if (exitCode == 0) {
-            status->success = true;
+        const long hr = operation == "创建虚拟摄像头"
+                            ? VirtualCameraRegistrar::registerVirtualCamera(friendlyName)
+                            : VirtualCameraRegistrar::unregisterVirtualCamera(friendlyName);
+        status->success = SUCCEEDED(hr);
+        if (status->success) {
             status->message = "成功";
         } else {
-            status->message = "失败 (子进程退出码 " + std::to_string(exitCode) + "，详情见日志)";
+            char buf[16];
+            snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(hr));
+            status->message = std::string("失败 (") + buf + ")";
         }
         status->inProgress = false;
         m_status.store(status);
