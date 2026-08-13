@@ -94,8 +94,9 @@ void DevicesPage::draw(UiContext& ctx) {
             for (const size_t idx : cat.indices) {
                 const DeviceInfo& d = (*devices)[idx];
                 const std::string display = d.name.empty() ? d.instanceId : d.name;
+                const std::string id = display + "##" + d.instanceId;
                 const bool isSelected = (selected == static_cast<int>(idx));
-                if (ImGui::Selectable(display.c_str(), isSelected)) {
+                if (ImGui::Selectable(id.c_str(), isSelected)) {
                     selectedInstance = d.instanceId;
                     selected = static_cast<int>(idx);
                 }

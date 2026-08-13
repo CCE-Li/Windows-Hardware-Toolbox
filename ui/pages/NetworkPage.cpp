@@ -52,8 +52,9 @@ void NetworkPage::draw(UiContext& ctx) {
     }
 
     ImGui::BeginChild("net_body", ImVec2(0, 0));
+    int cardIndex = 0;
     for (const NetworkAdapter& a : *adapters) {
-            const std::string id = "net_card_" + a.name;
+        const std::string id = "net_card_" + std::to_string(cardIndex++) + "_" + a.name;
             ImGui::BeginChild(id.c_str(), ImVec2(0, 0), ImGuiChildFlags_Borders);
             const bool up = (a.status == "已连接");
             ImGui::TextColored(up ? ImVec4(0.40f, 0.78f, 0.45f, 1.0f) : ImVec4(0.95f, 0.35f, 0.30f, 1.0f),
