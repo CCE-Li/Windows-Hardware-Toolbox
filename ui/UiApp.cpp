@@ -48,6 +48,15 @@ UiApp::UiApp(HardwareService& service, Config config)
     addPage<AboutPage>(m_pages);
 }
 
+void UiApp::setInitialPage(const std::string& title) {
+    for (size_t i = 0; i < m_pages.size(); ++i) {
+        if (m_pages[i]->title() == title) {
+            m_activePage = static_cast<int>(i);
+            break;
+        }
+    }
+}
+
 void UiApp::frame() {
     static bool showDemo = false;
     if (ImGui::IsKeyPressed(ImGuiKey_F1)) showDemo = !showDemo;

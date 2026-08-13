@@ -1,5 +1,6 @@
 #include "core/logging/Logger.h"
 #include "core/runtime/Privileges.h"
+#include "core/util/Utf.h"
 #include "services/HardwareService.h"
 
 #include <combaseapi.h>
@@ -88,17 +89,22 @@ bool HardwareService::isElevated() const {
     return htb::isElevated();
 }
 
-void HardwareService::relaunchAsAdmin() {
+void HardwareService::relaunchAsAdmin(const std::string& page) {
     wchar_t exePath[MAX_PATH]{};
     if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) == 0) {
         HTB_ERROR("[service] GetModuleFileNameW failed; cannot relaunch");
         return;
     }
-    const HINSTANCE r = ShellExecuteW(nullptr, L"runas", exePath, L"--elevated", nullptr, SW_SHOWNORMAL);
+    std::wstring args = L"--elevated";
+    if (!page.empty()) {
+        args += L" --page=";
+        args += toWide(page);
+    }
+    const HINSTANCE r = ShellExecuteW(nullptr, L"runas", exePath, args.c_str(), nullptr, SW_SHOWNORMAL);
     if (reinterpret_cast<INT_PTR>(r) <= 32) {
         HTB_ERROR("[service] UAC relaunch failed: {:#x}", static_cast<unsigned>(reinterpret_cast<INT_PTR>(r)));
     } else {
-        HTB_INFO("[service] relaunching elevated");
+        HTB_INFO("[service] relaunching elevated (page={})", page);
     }
 }
 

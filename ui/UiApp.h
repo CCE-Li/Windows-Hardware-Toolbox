@@ -17,6 +17,7 @@ public:
 
     void frame();
     void setOnQuit(std::function<void()> onQuit) { m_onQuit = std::move(onQuit); }
+    void setInitialPage(const std::string& title);
 
 private:
     void drawSidebar();

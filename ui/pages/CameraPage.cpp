@@ -33,16 +33,44 @@ void CameraPage::draw(UiContext& ctx) {
         ImGui::SetNextItemWidth(320.0f);
         ImGui::InputText("名称", nameBuf, sizeof(nameBuf));
         ImGui::SameLine();
+        static bool pendingAction = false;
         if (ImGui::Button("创建虚拟摄像头")) {
-            ctx.service.createVirtualCamera(nameBuf);
+            if (elevated) {
+                ctx.service.createVirtualCamera(nameBuf);
+            } else {
+                pendingAction = true;
+                ImGui::OpenPopup("admin_confirm");
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button("移除虚拟摄像头")) {
-            ctx.service.removeVirtualCamera();
+            if (elevated) {
+                ctx.service.removeVirtualCamera();
+            } else {
+                pendingAction = true;
+                ImGui::OpenPopup("admin_confirm");
+            }
+        }
+        if (ImGui::BeginPopupModal("admin_confirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (pendingAction) {
+                ImGui::TextWrapped("创建 / 移除虚拟摄像头需要管理员权限。\n是否以管理员身份重新启动本程序？");
+                ImGui::Spacing();
+                if (ImGui::Button("确认")) {
+                    ctx.service.relaunchAsAdmin("camera");
+                    ImGui::CloseCurrentPopup();
+                    pendingAction = false;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("取消")) {
+                    ImGui::CloseCurrentPopup();
+                    pendingAction = false;
+                }
+            }
+            ImGui::EndPopup();
         }
         if (!elevated) {
             ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f),
-                               "创建/移除虚拟摄像头需要管理员权限，请在“诊断”页以管理员身份重新启动。");
+                               "当前未以管理员运行：点击上方按钮将弹出 UAC 提升提示。");
         }
 
         const auto status = ctx.service.virtualCamera().lastStatus();

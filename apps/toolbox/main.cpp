@@ -135,7 +135,7 @@ LONG WINAPI crashHandler(EXCEPTION_POINTERS* ep) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-int runApp(HINSTANCE instance, htb::HardwareService& service) {
+int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmdLine) {
     setDpiAware();
 
     WNDCLASSEXW wc{};
@@ -183,8 +183,10 @@ int runApp(HINSTANCE instance, htb::HardwareService& service) {
     ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
 
     htb::UiApp uiApp(service, service.config());
+    if (cmdLine && wcsstr(cmdLine, L"--page=camera")) {
+        uiApp.setInitialPage("摄像头");
+    }
     uiApp.setOnQuit([hwnd] { PostMessageW(hwnd, WM_CLOSE, 0, 0); });
-
     ShowWindow(hwnd, SW_SHOWDEFAULT);
     UpdateWindow(hwnd);
 
@@ -269,7 +271,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
 
     htb::HardwareService service(std::move(config));
     service.start();
-    const int rc = htb_app::runApp(instance, service);
+    const int rc = htb_app::runApp(instance, service, cmdLine);
     service.stop();
     HTB_INFO("[app] Hardware Toolbox exiting with code {}", rc);
     return rc;

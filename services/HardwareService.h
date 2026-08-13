@@ -47,7 +47,7 @@ public:
     void runDnsTest(const std::string& host) { m_network->runDnsTest(host); }
 
     bool isElevated() const;
-    void relaunchAsAdmin();
+    void relaunchAsAdmin(const std::string& page = "");
 
     void setDeviceEnabledAsync(const std::string& instanceId, bool enable) {
         m_device->setDeviceEnabledAsync(instanceId, enable);
