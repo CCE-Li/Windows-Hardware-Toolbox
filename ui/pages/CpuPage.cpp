@@ -43,6 +43,9 @@ void CpuPage::draw(UiContext& ctx) {
         propRow("基础频率", cpu->baseFrequencyMHz
                                        ? formatMhz(*cpu->baseFrequencyMHz)
                                        : std::string(availabilityLabel(Availability::Unsupported)));
+        propRow("当前频率",
+                cpu->currentFrequencyMHz ? formatMhz(static_cast<uint32_t>(*cpu->currentFrequencyMHz))
+                                         : std::string(availabilityLabel(Availability::Unavailable)));
         propRow("静态信息来源", cpu->staticSource);
         ImGui::EndTable();
     }

@@ -12,6 +12,20 @@
 
 namespace htb {
 
+struct NvmeHealth {
+    Availability availability = Availability::Unavailable;
+    std::string source = "IOCTL (NVMe Health Log)";
+    std::optional<double> temperatureC;
+    std::optional<uint8_t> percentageUsed;
+    std::optional<uint64_t> powerOnHours;
+    std::optional<uint64_t> powerCycles;
+    std::optional<uint64_t> unsafeShutdowns;
+    std::optional<uint64_t> mediaErrors;
+    std::optional<uint64_t> dataUnitsRead;
+    std::optional<uint64_t> dataUnitsWritten;
+    std::string criticalWarning;
+};
+
 struct StorageDisk {
     std::string name;
     std::string serial;
@@ -29,6 +43,8 @@ struct StorageDisk {
     Availability healthAvailability = Availability::Unavailable;
     std::optional<double> temperatureC;
     std::string source;
+
+    NvmeHealth nvme;
 };
 
 class StorageProvider final : public HardwareProvider {

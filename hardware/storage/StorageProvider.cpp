@@ -1,15 +1,106 @@
 #include "core/logging/Logger.h"
+#include "core/util/Utf.h"
 #include "hardware/storage/StorageProvider.h"
 #include "hardware/wmi/WmiSession.h"
 
+#include <devioctl.h>
+#include <ntddstor.h>
+#include <nvme.h>
 #include <windows.h>
 
 #include <map>
 #include <string>
+#include <vector>
 
 namespace htb {
 
 namespace {
+
+struct NvmeHealthLog {
+    uint8_t criticalWarning;
+    uint8_t temperature[2];
+    uint8_t availableSpare;
+    uint8_t availableSpareThreshold;
+    uint8_t percentageUsed;
+    uint8_t reserved1[26];
+    uint8_t dataUnitsRead[16];
+    uint8_t dataUnitsWritten[16];
+    uint8_t hostReadCommands[16];
+    uint8_t hostWriteCommands[16];
+    uint8_t controllerBusyTime[16];
+    uint8_t powerCycles[16];
+    uint8_t powerOnHours[16];
+    uint8_t unsafeShutdowns[16];
+    uint8_t mediaErrors[16];
+    uint8_t numberOfErrorInfoLogEntries[16];
+};
+
+uint64_t readLe128(const uint8_t* b) {
+    uint64_t v = 0;
+    for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(b[i]) << (8 * i);
+    return v;
+}
+
+std::string criticalWarningText(uint8_t warning) {
+    std::string out;
+    if (warning & 0x01) out += "温度过高; ";
+    if (warning & 0x02) out += "设备降级; ";
+    if (warning & 0x04) out += "可靠性降低; ";
+    if (warning & 0x08) out += "备用空间不足; ";
+    if (warning & 0x10) out += "持久性媒体错误; ";
+    if (warning & 0x20) out += "易失性备份失败; ";
+    if (out.empty()) out = "无";
+    return out;
+}
+
+struct NvmePropertyQuery {
+    STORAGE_PROPERTY_ID PropertyId;
+    STORAGE_QUERY_TYPE QueryType;
+    STORAGE_PROTOCOL_SPECIFIC_DATA ProtocolSpecific;
+};
+
+bool readNvmeHealth(const std::string& deviceId, NvmeHealth& health) {
+    const std::wstring path = toWide(deviceId);
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return false;
+
+    NvmePropertyQuery query{};
+    query.PropertyId = StorageDeviceProtocolSpecificProperty;
+    query.QueryType = PropertyStandardQuery;
+    query.ProtocolSpecific.ProtocolType = ProtocolTypeNvme;
+    query.ProtocolSpecific.DataType = NVMeDataTypeLogPage;
+    query.ProtocolSpecific.ProtocolDataRequestValue = NVME_LOG_PAGE_HEALTH_INFO;
+    query.ProtocolSpecific.ProtocolDataRequestSubValue = 0;
+    query.ProtocolSpecific.ProtocolDataOffset = sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA);
+    query.ProtocolSpecific.ProtocolDataLength = sizeof(NvmeHealthLog);
+
+    std::vector<uint8_t> buffer(sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA) + sizeof(NvmeHealthLog));
+    DWORD bytesReturned = 0;
+    const BOOL ok = DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer.data(),
+                                    static_cast<DWORD>(buffer.size()), &bytesReturned, nullptr);
+    CloseHandle(handle);
+    if (!ok || bytesReturned < buffer.size()) return false;
+
+    const auto* spec = reinterpret_cast<const STORAGE_PROTOCOL_SPECIFIC_DATA*>(buffer.data());
+    if (spec->ProtocolDataOffset + spec->ProtocolDataLength > buffer.size()) return false;
+    const auto* log = reinterpret_cast<const NvmeHealthLog*>(buffer.data() + spec->ProtocolDataOffset);
+
+    const uint16_t tempK = static_cast<uint16_t>(log->temperature[0]) |
+                           (static_cast<uint16_t>(log->temperature[1]) << 8);
+    if (tempK > 0) health.temperatureC = static_cast<double>(tempK) - 273.15;
+    if (log->percentageUsed > 0) health.percentageUsed = log->percentageUsed;
+    health.powerOnHours = readLe128(log->powerOnHours);
+    health.powerCycles = readLe128(log->powerCycles);
+    health.unsafeShutdowns = readLe128(log->unsafeShutdowns);
+    health.mediaErrors = readLe128(log->mediaErrors);
+    health.dataUnitsRead = readLe128(log->dataUnitsRead);
+    health.dataUnitsWritten = readLe128(log->dataUnitsWritten);
+    health.criticalWarning = criticalWarningText(log->criticalWarning);
+    health.availability = Availability::Available;
+    return true;
+}
+
 std::string busTypeName(uint16_t busType) {
     switch (busType) {
         case 0: return "未知";
@@ -131,6 +222,17 @@ void StorageProvider::refresh() {
 
     for (auto& [key, disk] : byDeviceId) {
         disk.source = "WMI (Win32_DiskDrive / Storage Management)";
+        if (!disk.deviceId.empty()) {
+            NvmeHealth nvme;
+            if (readNvmeHealth(disk.deviceId, nvme)) {
+                disk.nvme = std::move(nvme);
+                HTB_DEBUG("[storage] {} NVMe health: temp {:.0f} C, wear {}%, POH {}, media errors {}",
+                          disk.name, disk.nvme.temperatureC.value_or(-273.0), disk.nvme.percentageUsed.value_or(0),
+                          disk.nvme.powerOnHours.value_or(0), disk.nvme.mediaErrors.value_or(0));
+            } else {
+                HTB_DEBUG("[storage] {}: NVMe health log unavailable (SATA or unsupported)", disk.name);
+            }
+        }
         disks->push_back(std::move(disk));
     }
 

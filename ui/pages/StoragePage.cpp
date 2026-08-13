@@ -42,17 +42,19 @@ void StoragePage::draw(UiContext& ctx) {
     if (disks->empty()) {
         ImGui::Text("未检测到磁盘");
     } else {
-        if (ImGui::BeginTable("disk_table", 9,
+        if (ImGui::BeginTable("disk_table", 11,
                               ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                                   ImGuiTableFlags_Resizable)) {
             ImGui::TableSetupColumn("名称", ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("接口", ImGuiTableColumnFlags_WidthFixed, 90.0f);
             ImGui::TableSetupColumn("介质", ImGuiTableColumnFlags_WidthFixed, 140.0f);
             ImGui::TableSetupColumn("容量", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-            ImGui::TableSetupColumn("序列号", ImGuiTableColumnFlags_WidthFixed, 160.0f);
+            ImGui::TableSetupColumn("序列号", ImGuiTableColumnFlags_WidthFixed, 150.0f);
             ImGui::TableSetupColumn("固件", ImGuiTableColumnFlags_WidthFixed, 80.0f);
             ImGui::TableSetupColumn("健康", ImGuiTableColumnFlags_WidthFixed, 90.0f);
             ImGui::TableSetupColumn("温度", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+            ImGui::TableSetupColumn("磨损", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+            ImGui::TableSetupColumn("通电时间", ImGuiTableColumnFlags_WidthFixed, 100.0f);
             ImGui::TableSetupColumn("启动盘", ImGuiTableColumnFlags_WidthFixed, 60.0f);
             ImGui::TableHeadersRow();
 
@@ -74,6 +76,20 @@ void StoragePage::draw(UiContext& ctx) {
                 ImGui::TableNextColumn();
                 if (disk.temperatureC) {
                     ImGui::Text("%.0f C", *disk.temperatureC);
+                } else if (disk.nvme.temperatureC) {
+                    ImGui::Text("%.0f C", *disk.nvme.temperatureC);
+                } else {
+                    ImGui::TextDisabled("-");
+                }
+                ImGui::TableNextColumn();
+                if (disk.nvme.percentageUsed) {
+                    ImGui::Text("%u%%", *disk.nvme.percentageUsed);
+                } else {
+                    ImGui::TextDisabled("-");
+                }
+                ImGui::TableNextColumn();
+                if (disk.nvme.powerOnHours) {
+                    ImGui::Text("%llu h", static_cast<unsigned long long>(*disk.nvme.powerOnHours));
                 } else {
                     ImGui::TextDisabled("-");
                 }
@@ -83,7 +99,11 @@ void StoragePage::draw(UiContext& ctx) {
         }
         ImGui::Spacing();
         ImGui::TextDisabled("来源: %s", disks->front().source.c_str());
+        if (disks->front().nvme.availability == Availability::Available) {
+            ImGui::TextDisabled("NVMe 健康信息来源: %s", disks->front().nvme.source.c_str());
+        }
         ImGui::TextDisabled("健康状态与温度来自 Storage Management WMI (MSFT_PhysicalDisk)。");
+        ImGui::TextDisabled("磨损 / 通电时间 / 温度来自 NVMe 健康日志，需以管理员身份运行时可用。");
     }
     ImGui::EndChild();
 }

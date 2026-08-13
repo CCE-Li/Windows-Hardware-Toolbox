@@ -27,6 +27,7 @@ struct CpuInfo {
     Availability usageAvailability = Availability::Unavailable;
     std::string usageSource;
     std::chrono::steady_clock::time_point usageTimestamp;
+    std::optional<float> currentFrequencyMHz;
 };
 
 class CpuProvider final : public HardwareProvider {

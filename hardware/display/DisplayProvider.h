@@ -22,6 +22,12 @@ struct DisplayInfo {
     bool attached = false;
     bool primary = false;
     std::string source;
+
+    std::string edidManufacturer;
+    std::string edidSerial;
+    uint32_t edidWeek = 0;
+    uint32_t edidYear = 0;
+    double sizeInches = 0.0;
 };
 
 class DisplayProvider final : public HardwareProvider {

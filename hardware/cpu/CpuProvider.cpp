@@ -68,6 +68,7 @@ std::string architectureName(DWORD arch) {
 struct CpuProvider::Impl {
     PDH_HQUERY query = nullptr;
     std::vector<PDH_HCOUNTER> counters;
+    PDH_HCOUNTER performanceCounter = nullptr;
     bool pdhReady = false;
     bool pdhSeeded = false;
     bool staticDone = false;
@@ -136,6 +137,12 @@ void CpuProvider::initPdh() {
 
     PDH_HCOUNTER total{};
     ok = add(L"\\Processor Information(_Total)\\% Processor Time", total);
+    PDH_HCOUNTER perf{};
+    if (ok) {
+        const PDH_STATUS perfSt = PdhAddEnglishCounterW(
+            m_impl->query, L"\\Processor Information(_Total)\\% Processor Performance", 0, &perf);
+        if (perfSt == ERROR_SUCCESS) m_impl->performanceCounter = perf;
+    }
     for (uint32_t i = 0; ok && i < cores; ++i) {
         const std::wstring path = std::format(L"\\Processor Information({})\\% Processor Time", i);
         PDH_HCOUNTER c{};
@@ -185,6 +192,17 @@ void CpuProvider::refreshUsage() {
     }
     if (updated->perCoreUsage.empty()) return;
     updated->totalUsage = updated->perCoreUsage.front();
+
+    if (m_impl->performanceCounter) {
+        PDH_FMT_COUNTERVALUE perfValue{};
+        if (PdhGetFormattedCounterValue(m_impl->performanceCounter, PDH_FMT_DOUBLE, nullptr, &perfValue) ==
+                ERROR_SUCCESS &&
+            perfValue.doubleValue > 0.0 && info->baseFrequencyMHz) {
+            updated->currentFrequencyMHz =
+                static_cast<float>(info->baseFrequencyMHz.value() * perfValue.doubleValue / 100.0);
+        }
+    }
+
     updated->usageAvailability = Availability::Available;
     updated->usageSource = "PDH";
     updated->usageTimestamp = std::chrono::steady_clock::now();
