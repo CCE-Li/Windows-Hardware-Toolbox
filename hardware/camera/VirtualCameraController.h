@@ -1,7 +1,6 @@
 #pragma once
 
 #include <atomic>
-#include <functional>
 #include <memory>
 #include <string>
 
@@ -29,8 +28,7 @@ public:
     static std::string clsidString();
 
 private:
-    void run(const std::string& operation, const std::string& friendlyName,
-             const std::function<long(void*)>& task);
+    void run(const std::string& operation, const std::string& friendlyName);
 
     struct Impl;
     std::unique_ptr<Impl> m_impl;

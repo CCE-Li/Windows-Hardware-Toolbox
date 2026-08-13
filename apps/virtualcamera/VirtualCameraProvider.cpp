@@ -210,22 +210,31 @@ private:
 class VirtualCameraSource final : public IMFMediaSource, public IMFActivate, public IMFMediaSourcePrestart {
 public:
     VirtualCameraSource() {
-        MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
-        MFCreateEventQueue(&m_events);
-        MFCreateAttributes(&m_attributes, 4);
-        MFCreateMediaType(&m_mediaType);
-        m_mediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        m_mediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
-        MFSetAttributeSize(m_mediaType.Get(), MF_MT_FRAME_SIZE, kFrameWidth, kFrameHeight);
-        MFSetAttributeRatio(m_mediaType.Get(), MF_MT_FRAME_RATE, kFrameRate, 1);
-        MFSetAttributeRatio(m_mediaType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-        m_mediaType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-
         m_stream = std::make_unique<VirtualCameraStream>(this);
-        m_stream->init();
     }
 
     ~VirtualCameraSource() = default;
+
+    HRESULT ensureInitialized() {
+        std::call_once(m_initFlag, [this] {
+            m_initHr = MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
+            if (FAILED(m_initHr)) return;
+            m_initHr = MFCreateEventQueue(&m_events);
+            if (FAILED(m_initHr)) return;
+            m_initHr = MFCreateAttributes(&m_attributes, 4);
+            if (FAILED(m_initHr)) return;
+            m_initHr = MFCreateMediaType(&m_mediaType);
+            if (FAILED(m_initHr)) return;
+            m_mediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+            m_mediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+            MFSetAttributeSize(m_mediaType.Get(), MF_MT_FRAME_SIZE, kFrameWidth, kFrameHeight);
+            MFSetAttributeRatio(m_mediaType.Get(), MF_MT_FRAME_RATE, kFrameRate, 1);
+            MFSetAttributeRatio(m_mediaType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+            m_mediaType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+            m_initHr = m_stream->init();
+        });
+        return m_initHr;
+    }
 
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
         traceLog("source QI " + guidString(riid));
@@ -250,15 +259,23 @@ public:
     }
 
     STDMETHODIMP GetEvent(DWORD flags, IMFMediaEvent** ppEvent) override {
+        const HRESULT hr = ensureInitialized();
+        if (FAILED(hr)) return hr;
         return m_events->GetEvent(flags, ppEvent);
     }
     STDMETHODIMP BeginGetEvent(IMFAsyncCallback* cb, IUnknown* state) override {
+        const HRESULT hr = ensureInitialized();
+        if (FAILED(hr)) return hr;
         return m_events->BeginGetEvent(cb, state);
     }
     STDMETHODIMP EndGetEvent(IMFAsyncResult* result, IMFMediaEvent** ppEvent) override {
+        const HRESULT hr = ensureInitialized();
+        if (FAILED(hr)) return hr;
         return m_events->EndGetEvent(result, ppEvent);
     }
     STDMETHODIMP QueueEvent(MediaEventType type, REFGUID extType, HRESULT hr, const PROPVARIANT* value) override {
+        const HRESULT initHr = ensureInitialized();
+        if (FAILED(initHr)) return initHr;
         ComPtr<IMFMediaEvent> ev;
         HRESULT h = MFCreateMediaEvent(type, extType, hr, value, &ev);
         if (FAILED(h)) return h;
@@ -320,6 +337,8 @@ public:
 
     STDMETHODIMP ActivateObject(REFIID riid, void** ppv) override {
         traceLog("ActivateObject " + guidString(riid));
+        const HRESULT hr = ensureInitialized();
+        if (FAILED(hr)) return hr;
         return QueryInterface(riid, ppv);
     }
     STDMETHODIMP DetachObject() override { return E_NOTIMPL; }
@@ -327,6 +346,8 @@ public:
 
     STDMETHODIMP Prestart() override {
         traceLog("Prestart()");
+        const HRESULT hr = ensureInitialized();
+        if (FAILED(hr)) return hr;
         std::lock_guard lock(m_mutex);
         if (m_state == State::Shutdown) return MF_E_SHUTDOWN;
         if (m_state == State::Stopped) m_state = State::Started;
@@ -334,6 +355,8 @@ public:
     }
 
     STDMETHODIMP GetCharacteristics(DWORD* characteristics) override {
+        const HRESULT hr = ensureInitialized();
+        if (FAILED(hr)) return hr;
         *characteristics = MFMEDIASOURCE_CAN_PAUSE;
         return S_OK;
     }
@@ -356,6 +379,8 @@ private:
     volatile long m_ref = 1;
     std::mutex m_mutex;
     State m_state = State::Stopped;
+    std::once_flag m_initFlag;
+    HRESULT m_initHr = E_FAIL;
     ComPtr<IMFMediaEventQueue> m_events;
     ComPtr<IMFAttributes> m_attributes;
     ComPtr<IMFMediaType> m_mediaType;
@@ -386,6 +411,8 @@ HRESULT VirtualCameraStream::init() {
 }
 
 STDMETHODIMP VirtualCameraStream::GetStreamDescriptor(IMFStreamDescriptor** ppDescriptor) {
+    const HRESULT initHr = m_owner->ensureInitialized();
+    if (FAILED(initHr)) return initHr;
     if (m_descriptor) {
         *ppDescriptor = m_descriptor.Get();
         m_descriptor->AddRef();
@@ -400,12 +427,16 @@ STDMETHODIMP VirtualCameraStream::GetMediaSource(IMFMediaSource** ppSource) {
 
 STDMETHODIMP VirtualCameraStream::RequestSample(IUnknown* token) {
     (void)token;
+    const HRESULT initHr = m_owner->ensureInitialized();
+    if (FAILED(initHr)) return initHr;
     if (m_owner->isShutdown() || !m_owner->isRunning()) return MF_E_END_OF_STREAM;
     std::this_thread::sleep_for(std::chrono::milliseconds(1000 / kFrameRate));
     return m_owner->generateSample(m_events.Get());
 }
 
 STDMETHODIMP VirtualCameraSource::CreatePresentationDescriptor(IMFPresentationDescriptor** ppPresentationDescriptor) {
+    const HRESULT initHr = ensureInitialized();
+    if (FAILED(initHr)) return initHr;
     ComPtr<IMFStreamDescriptor> sd;
     HRESULT hr = m_stream->GetStreamDescriptor(&sd);
     if (FAILED(hr)) return hr;
@@ -422,6 +453,8 @@ STDMETHODIMP VirtualCameraSource::Start(IMFPresentationDescriptor* pDescriptor, 
     (void)pDescriptor;
     (void)pvarStartPosition;
     if (pguidTimeFormat && *pguidTimeFormat != GUID_NULL) return MF_E_UNSUPPORTED_TIME_FORMAT;
+    const HRESULT initHr = ensureInitialized();
+    if (FAILED(initHr)) return initHr;
     std::lock_guard lock(m_mutex);
     if (m_state == State::Shutdown) return MF_E_SHUTDOWN;
     m_state = State::Started;
@@ -434,6 +467,8 @@ STDMETHODIMP VirtualCameraSource::Start(IMFPresentationDescriptor* pDescriptor, 
 }
 
 STDMETHODIMP VirtualCameraSource::Stop() {
+    const HRESULT initHr = ensureInitialized();
+    if (FAILED(initHr)) return initHr;
     std::lock_guard lock(m_mutex);
     if (m_state == State::Shutdown) return MF_E_SHUTDOWN;
     m_state = State::Stopped;
@@ -442,6 +477,8 @@ STDMETHODIMP VirtualCameraSource::Stop() {
 }
 
 STDMETHODIMP VirtualCameraSource::Pause() {
+    const HRESULT initHr = ensureInitialized();
+    if (FAILED(initHr)) return initHr;
     std::lock_guard lock(m_mutex);
     if (m_state == State::Shutdown) return MF_E_SHUTDOWN;
     if (m_state == State::Started) m_state = State::Paused;
@@ -449,6 +486,8 @@ STDMETHODIMP VirtualCameraSource::Pause() {
 }
 
 STDMETHODIMP VirtualCameraSource::Shutdown() {
+    const HRESULT initHr = ensureInitialized();
+    if (FAILED(initHr)) return initHr;
     std::lock_guard lock(m_mutex);
     if (m_state == State::Shutdown) return MF_E_SHUTDOWN;
     m_state = State::Shutdown;
@@ -458,6 +497,8 @@ STDMETHODIMP VirtualCameraSource::Shutdown() {
 }
 
 HRESULT VirtualCameraSource::generateSample(IMFMediaEventQueue* streamEvents) {
+    const HRESULT initHr = ensureInitialized();
+    if (FAILED(initHr)) return initHr;
     std::lock_guard lock(m_mutex);
     if (m_state != State::Started) return MF_E_END_OF_STREAM;
 

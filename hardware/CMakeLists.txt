@@ -4,6 +4,7 @@ add_library(htb_hardware STATIC
     camera/CameraProvider.cpp
     camera/VideoTransformPipeline.cpp
     camera/VirtualCameraController.cpp
+    camera/VirtualCameraRegistrar.cpp
     cpu/CpuProvider.cpp
     device/DeviceProvider.cpp
     display/DisplayProvider.cpp

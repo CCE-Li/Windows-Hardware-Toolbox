@@ -11,6 +11,8 @@
 
 #include "core/config/Config.h"
 #include "core/logging/Logger.h"
+#include "core/util/Utf.h"
+#include "hardware/camera/VirtualCameraRegistrar.h"
 #include "services/HardwareService.h"
 #include "ui/UiApp.h"
 #include "ui/themes/Theme.h"
@@ -262,6 +264,19 @@ int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmd
 int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     htb::Logger::init(cmdLine && wcsstr(cmdLine, L"--console") != nullptr);
     SetUnhandledExceptionFilter(&htb_app::crashHandler);
+
+    if (cmdLine && (wcsstr(cmdLine, L"--register-vcamera") || wcsstr(cmdLine, L"--unregister-vcamera"))) {
+        const bool unregister = wcsstr(cmdLine, L"--unregister-vcamera") != nullptr;
+        std::wstring name = L"Hardware Toolbox 虚拟摄像头";
+        const wchar_t* quote = wcsstr(cmdLine, L"\"");
+        if (quote) {
+            const wchar_t* end = wcschr(quote + 1, L'"');
+            if (end) name.assign(quote + 1, end - quote - 1);
+        }
+        const long hr = unregister ? htb::VirtualCameraRegistrar::unregisterVirtualCamera(htb::toUtf8(name))
+                                   : htb::VirtualCameraRegistrar::registerVirtualCamera(htb::toUtf8(name));
+        return SUCCEEDED(hr) ? 0 : 1;
+    }
 
     htb::Config config = htb::Config::load();
     HTB_INFO("[app] Hardware Toolbox v{} starting", HTB_VERSION_STRING);
