@@ -30,7 +30,9 @@ HardwareService::HardwareService(Config config)
       m_storage(std::make_unique<StorageProvider>()),
       m_network(std::make_unique<NetworkProvider>()),
       m_battery(std::make_unique<BatteryProvider>()),
-      m_audio(std::make_unique<AudioProvider>()) {}
+      m_audio(std::make_unique<AudioProvider>()),
+      m_camera(std::make_unique<CameraProvider>()),
+      m_display(std::make_unique<DisplayProvider>()) {}
 
 HardwareService::~HardwareService() {
     stop();
@@ -62,6 +64,8 @@ void HardwareService::loop() {
         refreshProvider("network", [this] { m_network->refresh(); });
         refreshProvider("battery", [this] { m_battery->refresh(); });
         refreshProvider("audio", [this] { m_audio->refresh(); });
+        refreshProvider("camera", [this] { m_camera->refresh(); });
+        refreshProvider("display", [this] { m_display->refresh(); });
         m_lastRefresh.store(std::chrono::steady_clock::now());
         m_cv.wait_for(lock, std::chrono::milliseconds(m_intervalMs),
                       [this] { return !m_running.load(); });

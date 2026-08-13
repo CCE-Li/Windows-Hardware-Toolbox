@@ -6,10 +6,12 @@
 
 #include "ui/pages/AboutPage.h"
 #include "ui/pages/AudioPage.h"
+#include "ui/pages/CameraPage.h"
 #include "ui/pages/CpuPage.h"
 #include "ui/pages/DashboardPage.h"
 #include "ui/pages/DevicesPage.h"
 #include "ui/pages/DiagnosticsPage.h"
+#include "ui/pages/DisplayPage.h"
 #include "ui/pages/GpuPage.h"
 #include "ui/pages/MemoryPage.h"
 #include "ui/pages/NetworkPage.h"
@@ -39,6 +41,8 @@ UiApp::UiApp(HardwareService& service, Config config)
     addPage<UsbPage>(m_pages);
     addPage<DevicesPage>(m_pages);
     addPage<AudioPage>(m_pages);
+    addPage<DisplayPage>(m_pages);
+    addPage<CameraPage>(m_pages);
     addPage<DiagnosticsPage>(m_pages);
     addPage<SensorsPage>(m_pages);
     addPage<AboutPage>(m_pages);

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "hardware/HardwareProvider.h"
+#include "monitoring/Metric.h"
 
 namespace htb {
 
@@ -27,6 +28,8 @@ struct NetworkAdapter {
     uint64_t inErrors = 0;
     uint64_t outErrors = 0;
     uint64_t mtu = 0;
+    std::string pingStatus;
+    Availability pingAvailability = Availability::Unavailable;
     std::string source;
 };
 

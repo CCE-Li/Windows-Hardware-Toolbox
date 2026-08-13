@@ -3,10 +3,12 @@ add_library(htb_ui STATIC
     themes/Theme.cpp
     pages/AboutPage.cpp
     pages/AudioPage.cpp
+    pages/CameraPage.cpp
     pages/CpuPage.cpp
     pages/DashboardPage.cpp
     pages/DevicesPage.cpp
     pages/DiagnosticsPage.cpp
+    pages/DisplayPage.cpp
     pages/GpuPage.cpp
     pages/MemoryPage.cpp
     pages/NetworkPage.cpp

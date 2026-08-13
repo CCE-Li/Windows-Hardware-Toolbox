@@ -23,8 +23,12 @@ C++20 / CMake / Win32 / COM / WMI / SetupAPI / PDH / DXGI / D3D11 / Dear ImGui /
 | Memory provider (Win32 API + WMI DIMM) | Done |
 | Device enumeration (SetupAPI + CfgMgr32, parent/child) | Done |
 | Storage provider (WMI disks + health/temperature) | Done |
-| Network provider (IP Helper: addresses, link speed, live rates) | Done |
-| UI: 仪表盘/CPU/GPU/内存/存储/网络/USB/设备/诊断/传感器/关于 (中文) | Done |
+| Network provider (IP Helper: addresses, link speed, live rates, gateway ping) | Done |
+| Audio provider (MMDevice endpoints: state, format, default) | Done |
+| Battery provider (WMI) + dashboard tiles | Done |
+| Display provider (EnumDisplayDevices: resolution, refresh, monitor) | Done |
+| Camera enumeration (Media Foundation) | Done |
+| UI: 仪表盘/CPU/GPU/内存/存储/网络/USB/设备/音频/显示/摄像头/诊断/传感器/关于 (中文) | Done |
 | CJK font (微软雅黑, scaled up) | Done |
 | Crash handler (unhandled exception logging) | Done |
 | Unit tests (config, metric, utf, vendor) | Done |

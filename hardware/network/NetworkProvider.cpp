@@ -5,8 +5,11 @@
 #include <winsock2.h>
 #include <ws2ipdef.h>
 #include <windows.h>
+#include <IPExport.h>
+#include <icmpapi.h>
 #include <iphlpapi.h>
 #include <netioapi.h>
+#include <ws2tcpip.h>
 
 #include <chrono>
 #include <map>
@@ -44,6 +47,34 @@ struct Sample {
     uint64_t rx = 0;
     uint64_t tx = 0;
 };
+
+std::string pingGateway(const std::string& gateway, uint64_t& latencyMs) {
+    std::wstring w = toWide(gateway);
+    IN_ADDR addr{};
+    if (InetPtonW(AF_INET, w.c_str(), &addr) != 1) return "目标格式无效";
+
+    const HANDLE handle = IcmpCreateFile();
+    if (handle == INVALID_HANDLE_VALUE) return "ICMP 不可用";
+
+    char data[32]{};
+    char replyBuf[sizeof(ICMP_ECHO_REPLY) + 64]{};
+    const DWORD rc = IcmpSendEcho(handle, addr.S_un.S_addr, data, static_cast<WORD>(sizeof(data)), nullptr,
+                                  replyBuf, sizeof(replyBuf), 800);
+    std::string status;
+    if (rc != 0) {
+        const auto* reply = reinterpret_cast<const ICMP_ECHO_REPLY*>(replyBuf);
+        if (reply->Status == IP_SUCCESS) {
+            latencyMs = reply->RoundTripTime;
+            status = "正常";
+        } else {
+            status = "不可达";
+        }
+    } else {
+        status = "超时";
+    }
+    IcmpCloseHandle(handle);
+    return status;
+}
 } // namespace
 
 struct NetworkProvider::Impl {
@@ -139,6 +170,12 @@ void NetworkProvider::refresh() {
     }
 
     for (auto& [index, adapter] : byIndex) {
+        if (!adapter.gateways.empty() && adapter.status == "已连接") {
+            uint64_t latency = 0;
+            const std::string ping = pingGateway(adapter.gateways.front(), latency);
+            adapter.pingStatus = ping + (latency > 0 ? " (" + std::to_string(latency) + " ms)" : "");
+            adapter.pingAvailability = Availability::Available;
+        }
         adapters->push_back(std::move(adapter));
     }
 
