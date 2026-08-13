@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <string>
 
+#include "core/util/Clipboard.h"
 #include "hardware/device/DeviceProvider.h"
 #include "hardware/storage/StorageProvider.h"
 #include "ui/Format.h"
@@ -22,6 +23,7 @@ void DiagnosticsPage::draw(UiContext& ctx) {
         ImGui::Text("正在收集设备信息...");
         return;
     }
+    auto disks = ctx.service.storage().snapshot();
 
     size_t total = devices->size();
     size_t problems = 0;
@@ -32,6 +34,29 @@ void DiagnosticsPage::draw(UiContext& ctx) {
     }
 
     ImGui::BeginChild("diag_body", ImVec2(0, 0));
+    if (ImGui::Button("复制诊断报告")) {
+        std::string report = "设备总数: " + std::to_string(total) + "\n";
+        report += "问题设备: " + std::to_string(problems) + "\n";
+        report += "禁用设备: " + std::to_string(disabled) + "\n";
+        if (disks) {
+            for (const StorageDisk& disk : *disks) {
+                report += "磁盘 " + disk.name + ": ";
+                report += disk.healthAvailability == Availability::Available ? disk.healthStatus : "N/A";
+                report += "\n";
+            }
+        }
+        if (problems > 0) {
+            report += "\n问题设备列表:\n";
+            for (const DeviceInfo& d : *devices) {
+                if (d.problem != 0) {
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "0x%X", d.problem);
+                    report += "  " + d.name + " [" + d.className + "] " + buf + " " + d.instanceId + "\n";
+                }
+            }
+        }
+        htb::copyToClipboard(report);
+    }
     if (ImGui::BeginTable("diag_summary", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("指标", ImGuiTableColumnFlags_WidthFixed, 240.0f);
         ImGui::TableSetupColumn("值");
@@ -58,7 +83,6 @@ void DiagnosticsPage::draw(UiContext& ctx) {
         ImGui::EndTable();
     }
 
-    auto disks = ctx.service.storage().snapshot();
     if (disks) {
         ImGui::Spacing();
         ImGui::Text("磁盘健康");
@@ -117,6 +141,22 @@ void DiagnosticsPage::draw(UiContext& ctx) {
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f), "所有设备工作正常");
     }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("系统工具");
+    ImGui::Separator();
+    if (ImGui::Button("设备管理器")) ctx.service.launchSystemTool("devmgmt");
+    ImGui::SameLine();
+    if (ImGui::Button("磁盘管理")) ctx.service.launchSystemTool("diskmgmt");
+    ImGui::SameLine();
+    if (ImGui::Button("系统信息")) ctx.service.launchSystemTool("msinfo32");
+    ImGui::SameLine();
+    if (ImGui::Button("网络连接")) ctx.service.launchSystemTool("ncpa");
+    ImGui::SameLine();
+    if (ImGui::Button("任务管理器")) ctx.service.launchSystemTool("taskmgr");
+    ImGui::TextDisabled("需要管理员权限的组件由系统自动提示 (UAC)。");
+
     ImGui::EndChild();
 }
 

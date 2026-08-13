@@ -4,6 +4,7 @@
 #include <string>
 
 #include "core/config/Config.h"
+#include "core/util/Clipboard.h"
 
 #include "imgui.h"
 
@@ -34,6 +35,21 @@ void AboutPage::draw(UiContext& ctx) {
 #else
     ImGui::Text("构建: Release");
 #endif
+    ImGui::Spacing();
+    if (ImGui::Button("打开日志目录")) ctx.service.launchSystemTool("logdir");
+    ImGui::SameLine();
+    if (ImGui::Button("打开配置目录")) ctx.service.launchSystemTool("cfgdir");
+    ImGui::SameLine();
+    if (ImGui::Button("复制版本信息")) {
+        std::string versionText = std::string("Windows Hardware Toolbox v") + HTB_VERSION_STRING + " (";
+#ifdef _DEBUG
+        versionText += "Debug";
+#else
+        versionText += "Release";
+#endif
+        versionText += ")";
+        htb::copyToClipboard(versionText);
+    }
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();

@@ -4,7 +4,10 @@
 #include <combaseapi.h>
 #include <exception>
 #include <functional>
+#include <shellapi.h>
 #include <windows.h>
+
+#include <cstdlib>
 
 namespace htb {
 
@@ -77,6 +80,52 @@ void HardwareService::loop() {
 
 std::chrono::steady_clock::time_point HardwareService::lastRefresh() const {
     return m_lastRefresh.load();
+}
+
+bool HardwareService::launchSystemTool(const std::string& tool) {
+    const wchar_t* command = nullptr;
+    if (tool == "devmgmt") {
+        command = L"devmgmt.msc";
+    } else if (tool == "diskmgmt") {
+        command = L"diskmgmt.msc";
+    } else if (tool == "msinfo32") {
+        command = L"msinfo32";
+    } else if (tool == "ncpa") {
+        command = L"ncpa.cpl";
+    } else if (tool == "taskmgr") {
+        command = L"taskmgr";
+    } else if (tool == "logdir") {
+        wchar_t* base = nullptr;
+        size_t len = 0;
+        _wdupenv_s(&base, &len, L"LOCALAPPDATA");
+        const std::wstring dir = (base && *base)
+                                     ? (std::wstring(base) + L"\\HardwareToolbox\\logs")
+                                     : L".";
+        free(base);
+        const HINSTANCE r = ShellExecuteW(nullptr, L"open", L"explorer.exe", dir.c_str(), nullptr, SW_SHOWNORMAL);
+        return reinterpret_cast<INT_PTR>(r) > 32;
+    } else if (tool == "cfgdir") {
+        wchar_t* base = nullptr;
+        size_t len = 0;
+        _wdupenv_s(&base, &len, L"LOCALAPPDATA");
+        const std::wstring dir = (base && *base)
+                                     ? (std::wstring(base) + L"\\HardwareToolbox")
+                                     : L".";
+        free(base);
+        const HINSTANCE r = ShellExecuteW(nullptr, L"open", L"explorer.exe", dir.c_str(), nullptr, SW_SHOWNORMAL);
+        return reinterpret_cast<INT_PTR>(r) > 32;
+    } else {
+        HTB_WARN("[service] unknown system tool: {}", tool);
+        return false;
+    }
+
+    const HINSTANCE r = ShellExecuteW(nullptr, L"open", command, nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(r) <= 32) {
+        HTB_ERROR("[service] failed to launch {}: {:#x}", tool, static_cast<unsigned>(reinterpret_cast<INT_PTR>(r)));
+        return false;
+    }
+    HTB_INFO("[service] launched system tool {}", tool);
+    return true;
 }
 
 } // namespace htb

@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 
+#include "core/util/Clipboard.h"
 #include "hardware/device/DeviceProvider.h"
 
 #include "imgui.h"
@@ -56,6 +57,8 @@ void DevicesPage::draw(UiContext& ctx) {
     const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - last).count();
     if (ImGui::Button("刷新")) ctx.service.requestDeviceRefresh();
     ImGui::SameLine();
+    if (ImGui::Button("打开设备管理器")) ctx.service.launchSystemTool("devmgmt");
+    ImGui::SameLine();
     ImGui::TextDisabled("%zu 台设备 | %s前枚举 | 来源: SetupAPI", devices->size(),
                         std::to_string(static_cast<int>(secs)).c_str());
 
@@ -100,6 +103,31 @@ void DevicesPage::draw(UiContext& ctx) {
     if (selected >= 0 && selected < static_cast<int>(devices->size())) {
         const DeviceInfo& d = (*devices)[static_cast<size_t>(selected)];
         ImGui::TextColored(ImVec4(0.86f, 0.60f, 0.15f, 1.0f), "%s", d.name.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("  %s", d.className.c_str());
+
+        std::string hwIdsJoined;
+        for (const auto& id : d.hardwareIds) {
+            hwIdsJoined += id;
+            hwIdsJoined += "\n";
+        }
+        std::string compIdsJoined;
+        for (const auto& id : d.compatibleIds) {
+            compIdsJoined += id;
+            compIdsJoined += "\n";
+        }
+        if (ImGui::Button("复制实例 ID")) htb::copyToClipboard(d.instanceId);
+        ImGui::SameLine();
+        if (ImGui::Button("复制硬件 ID")) htb::copyToClipboard(hwIdsJoined);
+        ImGui::SameLine();
+        if (ImGui::Button("复制兼容 ID")) htb::copyToClipboard(compIdsJoined);
+        ImGui::SameLine();
+        if (ImGui::Button("复制全部信息")) {
+            std::string report = "设备: " + d.name + "\n类别: " + d.className + "\n制造商: " + d.manufacturer +
+                                 "\n驱动版本: " + d.driverVersion + "\n实例 ID: " + d.instanceId + "\n\n硬件 ID:\n" +
+                                 hwIdsJoined + "\n兼容 ID:\n" + compIdsJoined;
+            htb::copyToClipboard(report);
+        }
         ImGui::Separator();
         if (ImGui::BeginTable("dev_props", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
             ImGui::TableSetupColumn("属性", ImGuiTableColumnFlags_WidthFixed, 220.0f);
@@ -119,18 +147,8 @@ void DevicesPage::draw(UiContext& ctx) {
             detailRow("已启动", boolText(d.started));
             detailRow("已禁用", boolText(d.disabled));
             detailRow("实例 ID", d.instanceId);
-            std::string hwIds;
-            for (const auto& id : d.hardwareIds) {
-                hwIds += id;
-                hwIds += "\n";
-            }
-            detailRow("硬件 ID", hwIds);
-            std::string compIds;
-            for (const auto& id : d.compatibleIds) {
-                compIds += id;
-                compIds += "\n";
-            }
-            detailRow("兼容 ID", compIds);
+            detailRow("硬件 ID", hwIdsJoined);
+            detailRow("兼容 ID", compIdsJoined);
             detailRow("位置路径", d.locationPaths);
             ImGui::EndTable();
         }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <string>
 
+#include "core/util/Clipboard.h"
 #include "hardware/HardwareTypes.h"
 #include "ui/Format.h"
 
@@ -41,6 +42,22 @@ void GpuPage::draw(UiContext& ctx) {
     }
 
     ImGui::BeginChild("gpu_body", ImVec2(0, 0));
+    if (ImGui::Button("复制信息")) {
+        std::string report;
+        for (const GpuInfo& gpu : *gpus) {
+            report += "GPU: " + gpu.name + " (" + std::string(vendorName(gpu.vendor)) + ")\n";
+            report += "专用显存: " + formatBytes(gpu.dedicatedVramBytes) + "\n";
+            if (gpu.driverAvailability == Availability::Available) {
+                report += "驱动: " + gpu.driverVersion + " (" + gpu.driverDate + ")\n";
+            }
+            if (gpu.usageAvailability == Availability::Available) {
+                report += "显存使用: " + formatBytes(gpu.usageBytes) + " (" +
+                          std::to_string(static_cast<int>(gpu.usagePercent)) + "%)\n";
+            }
+            report += "\n";
+        }
+        htb::copyToClipboard(report);
+    }
     const float cardH = std::max(
         180.0f,
         (ImGui::GetContentRegionAvail().y - ImGui::GetStyle().ItemSpacing.y * (gpus->size() - 1)) /

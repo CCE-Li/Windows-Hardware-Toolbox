@@ -1,8 +1,10 @@
 #include "ui/pages/NetworkPage.h"
 
 #include <cstdio>
+#include <cstring>
 #include <string>
 
+#include "core/util/Clipboard.h"
 #include "hardware/network/NetworkProvider.h"
 #include "ui/Format.h"
 
@@ -50,10 +52,7 @@ void NetworkPage::draw(UiContext& ctx) {
     }
 
     ImGui::BeginChild("net_body", ImVec2(0, 0));
-    if (adapters->empty()) {
-        ImGui::Text("未检测到网络适配器");
-    } else {
-        for (const NetworkAdapter& a : *adapters) {
+    for (const NetworkAdapter& a : *adapters) {
             const std::string id = "net_card_" + a.name;
             ImGui::BeginChild(id.c_str(), ImVec2(0, 0), ImGuiChildFlags_Borders);
             const bool up = (a.status == "已连接");
@@ -89,7 +88,84 @@ void NetworkPage::draw(UiContext& ctx) {
             ImGui::EndChild();
             ImGui::Spacing();
         }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("网络测试");
+    ImGui::Separator();
+
+    static char pingTarget[128]{};
+    const NetworkAdapter* connected = nullptr;
+    for (const NetworkAdapter& a : *adapters) {
+        if (a.status == "已连接") {
+            connected = &a;
+            break;
+        }
     }
+    if (pingTarget[0] == '\0' && connected && !connected->gateways.empty()) {
+        snprintf(pingTarget, sizeof(pingTarget), "%s", connected->gateways.front().c_str());
+    }
+
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::InputText("Ping 目标", pingTarget, sizeof(pingTarget));
+    ImGui::SameLine();
+    if (ImGui::Button("开始 Ping")) ctx.service.runPingTest(pingTarget, 4);
+    ImGui::SameLine();
+    if (connected && !connected->gateways.empty()) {
+        if (ImGui::Button("网关")) snprintf(pingTarget, sizeof(pingTarget), "%s", connected->gateways.front().c_str());
+        ImGui::SameLine();
+    }
+    if (ImGui::Button("8.8.8.8")) snprintf(pingTarget, sizeof(pingTarget), "8.8.8.8");
+    ImGui::SameLine();
+    if (ImGui::Button("114.114.114.114")) snprintf(pingTarget, sizeof(pingTarget), "114.114.114.114");
+
+    const auto ping = ctx.service.network().pingResult();
+    if (ping && ping->inProgress) {
+        ImGui::Text("正在测试 %s ...", ping->target.c_str());
+    } else if (ping) {
+        std::string report = "Ping " + ping->target + ": " + ping->status;
+        report += "\n发送 " + std::to_string(ping->count) + " / 接收 " + std::to_string(ping->received);
+        report += "\n平均 " + std::to_string(static_cast<int>(ping->avgMs)) + " ms";
+        report += " | 最小 " + std::to_string(static_cast<int>(ping->minMs)) + " ms";
+        report += " | 最大 " + std::to_string(static_cast<int>(ping->maxMs)) + " ms";
+        const bool lostAll = ping->received == 0;
+        if (lostAll) {
+            ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s", report.c_str());
+        } else {
+            ImGui::Text("%s", report.c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("复制结果")) htb::copyToClipboard(report);
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("DNS 解析测试");
+    static char dnsHost[128]{};
+    if (dnsHost[0] == '\0') snprintf(dnsHost, sizeof(dnsHost), "www.baidu.com");
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::InputText("域名", dnsHost, sizeof(dnsHost));
+    ImGui::SameLine();
+    if (ImGui::Button("开始解析")) ctx.service.runDnsTest(dnsHost);
+
+    const auto dns = ctx.service.network().dnsResult();
+    if (dns && dns->inProgress) {
+        ImGui::Text("正在解析 %s ...", dns->host.c_str());
+    } else if (dns) {
+        std::string report = "DNS " + dns->host + ": " + dns->status + " (" +
+                             std::to_string(static_cast<int>(dns->elapsedMs)) + " ms)";
+        for (const auto& addr : dns->addresses) {
+            report += "\n  " + addr;
+        }
+        if (dns->status == "解析成功") {
+            ImGui::Text("%s", report.c_str());
+        } else {
+            ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s", report.c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("复制结果 (DNS)")) htb::copyToClipboard(report);
+    }
+
     ImGui::EndChild();
 }
 

@@ -12,6 +12,7 @@
 #include <ws2tcpip.h>
 
 #include <chrono>
+#include <cmath>
 #include <map>
 #include <string>
 
@@ -79,11 +80,122 @@ std::string pingGateway(const std::string& gateway, uint64_t& latencyMs) {
 
 struct NetworkProvider::Impl {
     std::map<uint32_t, Sample> prev;
+    std::unique_ptr<std::thread> testThread;
+    std::atomic<bool> testRunning{false};
 };
 
 NetworkProvider::NetworkProvider() : m_impl(std::make_unique<Impl>()) {}
 
-NetworkProvider::~NetworkProvider() = default;
+NetworkProvider::~NetworkProvider() {
+    if (m_impl->testThread && m_impl->testThread->joinable()) m_impl->testThread->join();
+}
+
+void NetworkProvider::runPingTest(const std::string& target, int count) {
+    if (m_impl->testRunning.exchange(true)) return;
+    m_impl->testThread = std::make_unique<std::thread>([this, target, count] {
+        auto result = std::make_shared<PingTestResult>();
+        result->target = target;
+        result->count = count;
+        result->inProgress = true;
+        m_pingResult.store(result);
+
+        const std::wstring w = toWide(target);
+        IN_ADDR addr{};
+        if (InetPtonW(AF_INET, w.c_str(), &addr) != 1) {
+            result->status = "目标地址格式无效";
+            result->inProgress = false;
+            m_pingResult.store(result);
+            m_impl->testRunning.store(false);
+            return;
+        }
+
+        const HANDLE handle = IcmpCreateFile();
+        if (handle == INVALID_HANDLE_VALUE) {
+            result->status = "ICMP 不可用";
+            result->inProgress = false;
+            m_pingResult.store(result);
+            m_impl->testRunning.store(false);
+            return;
+        }
+
+        char data[32]{};
+        char replyBuf[sizeof(ICMP_ECHO_REPLY) + 64]{};
+        result->minMs = 1e9;
+        int lost = 0;
+        for (int i = 0; i < count; ++i) {
+            const DWORD rc = IcmpSendEcho(handle, addr.S_un.S_addr, data, static_cast<WORD>(sizeof(data)), nullptr,
+                                          replyBuf, sizeof(replyBuf), 2000);
+            if (rc != 0) {
+                const auto* reply = reinterpret_cast<const ICMP_ECHO_REPLY*>(replyBuf);
+                if (reply->Status == IP_SUCCESS) {
+                    const double ms = static_cast<double>(reply->RoundTripTime);
+                    result->avgMs += ms;
+                    result->minMs = std::min(result->minMs, ms);
+                    result->maxMs = std::max(result->maxMs, ms);
+                    ++result->received;
+                } else {
+                    ++lost;
+                }
+            } else {
+                ++lost;
+            }
+            if (i + 1 < count) std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+        IcmpCloseHandle(handle);
+
+        if (result->received > 0) result->avgMs /= static_cast<double>(result->received);
+        if (result->received == 0) result->minMs = 0.0;
+        if (lost == 0) {
+            result->status = "全部成功";
+        } else if (result->received == 0) {
+            result->status = "全部超时/失败";
+        } else {
+            result->status = "部分丢失";
+        }
+        result->inProgress = false;
+        m_pingResult.store(result);
+        m_impl->testRunning.store(false);
+        HTB_INFO("[network] ping {}: {} / {}, avg {:.1f} ms", target, result->received, count, result->avgMs);
+    });
+}
+
+void NetworkProvider::runDnsTest(const std::string& host) {
+    if (m_impl->testRunning.exchange(true)) return;
+    m_impl->testThread = std::make_unique<std::thread>([this, host] {
+        auto result = std::make_shared<DnsTestResult>();
+        result->host = host;
+        result->inProgress = true;
+        m_dnsResult.store(result);
+
+        const auto start = std::chrono::steady_clock::now();
+        ADDRINFOW hints{};
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        ADDRINFOW* addrInfo = nullptr;
+        const int rc = GetAddrInfoW(toWide(host).c_str(), nullptr, &hints, &addrInfo);
+        const double elapsed =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        result->elapsedMs = elapsed;
+
+        if (rc == 0 && addrInfo) {
+            result->status = "解析成功";
+            for (const ADDRINFOW* a = addrInfo; a; a = a->ai_next) {
+                wchar_t text[64];
+                DWORD textLen = 64;
+                if (WSAAddressToStringW(a->ai_addr, static_cast<DWORD>(a->ai_addrlen), nullptr, text, &textLen) == 0) {
+                    result->addresses.push_back(toUtf8(text));
+                }
+            }
+            FreeAddrInfoW(addrInfo);
+        } else {
+            result->status = "解析失败";
+        }
+        result->inProgress = false;
+        m_dnsResult.store(result);
+        m_impl->testRunning.store(false);
+        HTB_INFO("[network] dns {}: {} ({:.1f} ms)", host, result->status, elapsed);
+    });
+}
 
 void NetworkProvider::refresh() {
     auto adapters = std::make_shared<std::vector<NetworkAdapter>>();

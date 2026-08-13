@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <string>
 
+#include "core/util/Clipboard.h"
 #include "ui/Format.h"
 
 #include "imgui.h"
@@ -31,6 +32,24 @@ void CpuPage::draw(UiContext& ctx) {
     }
 
     ImGui::BeginChild("cpu_body", ImVec2(0, 0));
+    if (ImGui::Button("复制信息")) {
+        std::string report = "CPU: " + cpu->name + " (" + cpu->vendor + ")\n";
+        report += "架构: " + cpu->architecture + "\n";
+        report += "核心: " + std::to_string(cpu->physicalCores) + " 物理 / " +
+                  std::to_string(cpu->logicalCores) + " 逻辑\n";
+        if (cpu->baseFrequencyMHz) {
+            report += "基础频率: " + formatMhz(*cpu->baseFrequencyMHz) + "\n";
+        }
+        if (cpu->usageAvailability == Availability::Available) {
+            report += "当前使用率: " + std::to_string(static_cast<int>(cpu->totalUsage)) + "%\n";
+        }
+        if (cpu->currentFrequencyMHz) {
+            report += "当前频率: " + formatMhz(static_cast<uint32_t>(*cpu->currentFrequencyMHz)) + "\n";
+        }
+        htb::copyToClipboard(report);
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("来源: %s", cpu->staticSource.c_str());
     if (ImGui::BeginTable("cpu_props", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("属性", ImGuiTableColumnFlags_WidthFixed, 240.0f);
         ImGui::TableSetupColumn("值");

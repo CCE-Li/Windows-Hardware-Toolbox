@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "core/util/Clipboard.h"
 #include "hardware/storage/StorageProvider.h"
 #include "ui/Format.h"
 
@@ -42,6 +43,29 @@ void StoragePage::draw(UiContext& ctx) {
     if (disks->empty()) {
         ImGui::Text("未检测到磁盘");
     } else {
+        if (ImGui::Button("打开磁盘管理")) ctx.service.launchSystemTool("diskmgmt");
+        ImGui::SameLine();
+        if (ImGui::Button("复制磁盘信息")) {
+            std::string report;
+            for (const StorageDisk& disk : *disks) {
+                report += "磁盘: " + disk.name + "\n";
+                report += "  接口: " + (disk.busType.empty() ? disk.interfaceType : disk.busType) + "\n";
+                report += "  介质: " + disk.mediaType + "\n";
+                report += "  容量: " + formatBytes(disk.sizeBytes) + "\n";
+                report += "  序列号: " + disk.serial + "\n";
+                report += "  固件: " + disk.firmware + "\n";
+                if (disk.healthAvailability == Availability::Available) {
+                    report += "  健康: " + disk.healthStatus + "\n";
+                }
+                if (disk.nvme.percentageUsed) {
+                    report += "  磨损: " + std::to_string(*disk.nvme.percentageUsed) + "%\n";
+                }
+                report += "\n";
+            }
+            htb::copyToClipboard(report);
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("共 %zu 块磁盘", disks->size());
         if (ImGui::BeginTable("disk_table", 11,
                               ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                                   ImGuiTableFlags_Resizable)) {

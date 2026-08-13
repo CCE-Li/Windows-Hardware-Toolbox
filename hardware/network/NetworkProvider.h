@@ -4,12 +4,32 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "hardware/HardwareProvider.h"
 #include "monitoring/Metric.h"
 
 namespace htb {
+
+struct PingTestResult {
+    std::string target;
+    int count = 0;
+    int received = 0;
+    double avgMs = 0.0;
+    double minMs = 0.0;
+    double maxMs = 0.0;
+    std::string status;
+    bool inProgress = false;
+};
+
+struct DnsTestResult {
+    std::string host;
+    std::string status;
+    std::vector<std::string> addresses;
+    double elapsedMs = 0.0;
+    bool inProgress = false;
+};
 
 struct NetworkAdapter {
     std::string name;
@@ -43,10 +63,17 @@ public:
 
     std::shared_ptr<const std::vector<NetworkAdapter>> snapshot() const { return m_snapshot.load(); }
 
+    void runPingTest(const std::string& target, int count);
+    void runDnsTest(const std::string& host);
+    std::shared_ptr<const PingTestResult> pingResult() const { return m_pingResult.load(); }
+    std::shared_ptr<const DnsTestResult> dnsResult() const { return m_dnsResult.load(); }
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
     std::atomic<std::shared_ptr<const std::vector<NetworkAdapter>>> m_snapshot;
+    std::atomic<std::shared_ptr<const PingTestResult>> m_pingResult;
+    std::atomic<std::shared_ptr<const DnsTestResult>> m_dnsResult;
 };
 
 } // namespace htb

@@ -41,6 +41,10 @@ public:
     const DisplayProvider& display() const { return *m_display; }
     void requestDeviceRefresh() { m_device->requestRefresh(); }
 
+    bool launchSystemTool(const std::string& tool);
+    void runPingTest(const std::string& target, int count) { m_network->runPingTest(target, count); }
+    void runDnsTest(const std::string& host) { m_network->runDnsTest(host); }
+
     const Config& config() const { return m_config; }
     int intervalMs() const { return m_intervalMs; }
     std::chrono::steady_clock::time_point lastRefresh() const;
