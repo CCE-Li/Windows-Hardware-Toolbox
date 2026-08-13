@@ -20,6 +20,16 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
+constexpr GUID IID_IMFMediaSourcePrestart_CUSTOM = {0x3C9B2EB9, 0x86D5, 0x4514,
+                                                    {0xA3, 0x94, 0xF5, 0x66, 0x64, 0xF9, 0xF0, 0xD8}};
+
+class IMFMediaSourcePrestart {
+public:
+    virtual ~IMFMediaSourcePrestart() = default;
+    virtual HRESULT STDMETHODCALLTYPE Prestart() = 0;
+};
+
+
 constexpr DWORD kFrameWidth = htb::kFrameShmOutWidth;
 constexpr DWORD kFrameHeight = htb::kFrameShmOutHeight;
 constexpr DWORD kFrameRate = 30;
@@ -197,7 +207,7 @@ private:
     VirtualCameraSource* m_owner;
 };
 
-class VirtualCameraSource final : public IMFMediaSource, public IMFActivate {
+class VirtualCameraSource final : public IMFMediaSource, public IMFActivate, public IMFMediaSourcePrestart {
 public:
     VirtualCameraSource() {
         MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
@@ -223,6 +233,8 @@ public:
             *ppv = static_cast<IMFMediaSource*>(this);
         } else if (riid == IID_IMFActivate || riid == IID_IMFAttributes) {
             *ppv = static_cast<IMFActivate*>(this);
+        } else if (riid == IID_IMFMediaSourcePrestart_CUSTOM) {
+            *ppv = static_cast<IMFMediaSourcePrestart*>(this);
         } else {
             *ppv = nullptr;
             return E_NOINTERFACE;
@@ -312,6 +324,14 @@ public:
     }
     STDMETHODIMP DetachObject() override { return E_NOTIMPL; }
     STDMETHODIMP ShutdownObject() override { return Shutdown(); }
+
+    STDMETHODIMP Prestart() override {
+        traceLog("Prestart()");
+        std::lock_guard lock(m_mutex);
+        if (m_state == State::Shutdown) return MF_E_SHUTDOWN;
+        if (m_state == State::Stopped) m_state = State::Started;
+        return S_OK;
+    }
 
     STDMETHODIMP GetCharacteristics(DWORD* characteristics) override {
         *characteristics = MFMEDIASOURCE_CAN_PAUSE;
