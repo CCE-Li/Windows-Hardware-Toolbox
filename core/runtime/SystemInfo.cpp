@@ -46,6 +46,15 @@ SystemInfo querySystemInfo() {
     info.osName = readRegString(ntKey, L"ProductName");
     info.osDisplayVersion = readRegString(ntKey, L"DisplayVersion");
 
+    uint32_t buildNumber = 0;
+    try {
+        if (!info.osBuild.empty()) buildNumber = static_cast<uint32_t>(std::stoul(info.osBuild));
+    } catch (...) {
+    }
+    if (buildNumber >= 22000 && info.osName.rfind("Windows 10", 0) == 0) {
+        info.osName.replace(0, 10, "Windows 11");
+    }
+
     SYSTEM_INFO si{};
     GetNativeSystemInfo(&si);
     switch (si.wProcessorArchitecture) {
