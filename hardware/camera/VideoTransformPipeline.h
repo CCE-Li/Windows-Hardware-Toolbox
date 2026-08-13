@@ -10,6 +10,7 @@ namespace htb {
 
 struct CameraOutputParams {
     int cameraIndex = 0;
+    int outputTarget = 0;  // 0 = OBS Virtual Camera, 1 = Hardware Toolbox Virtual Camera
     float zoom = 1.0f;
     float panX = 0.0f;
     float panY = 0.0f;

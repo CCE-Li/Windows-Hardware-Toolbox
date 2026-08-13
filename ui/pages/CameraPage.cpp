@@ -114,6 +114,21 @@ void CameraPage::draw(UiContext& ctx) {
                 ImGui::EndCombo();
             }
 
+            static const char* kOutputTargets[] = {"OBS Virtual Camera (无需管理员)", "Hardware Toolbox 虚拟摄像头 (需管理员)"};
+            if (ImGui::BeginCombo("输出到", kOutputTargets[params.outputTarget])) {
+                for (int i = 0; i < 2; ++i) {
+                    if (ImGui::Selectable(kOutputTargets[i], params.outputTarget == i)) {
+                        params.outputTarget = i;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (params.outputTarget == 0) {
+                ImGui::TextDisabled("目标: OBS Virtual Camera (系统已注册的 OBS 驱动，无需管理员)");
+            } else {
+                ImGui::TextDisabled("目标: Hardware Toolbox 虚拟摄像头 (需先以管理员创建)");
+            }
+
             params.cameraIndex = selectedCamera;
             if (ImGui::SliderFloat("缩放", &params.zoom, 1.0f, 3.0f, "%.2fx")) {
                 if (outputRunning) ctx.service.updateCameraOutput(params);

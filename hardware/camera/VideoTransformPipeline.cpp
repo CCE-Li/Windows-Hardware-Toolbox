@@ -1,6 +1,7 @@
 #include "core/logging/Logger.h"
 #include "core/util/Utf.h"
 #include "hardware/camera/FrameShm.h"
+#include "hardware/camera/ObsVirtualCam.h"
 #include "hardware/camera/VideoTransformPipeline.h"
 
 #include <mfapi.h>
@@ -150,6 +151,8 @@ struct VideoTransformPipeline::Impl {
     uint8_t* shmView = nullptr;
     uint32_t generation = 0;
     uint64_t frameIndex = 0;
+    ObsVirtualCam obsCam;
+    std::string outputError;
 };
 
 VideoTransformPipeline::VideoTransformPipeline() : m_impl(std::make_unique<Impl>()) {}
@@ -171,6 +174,7 @@ void VideoTransformPipeline::updateParams(const CameraOutputParams& params) {
 void VideoTransformPipeline::stop() {
     if (!m_impl->running.exchange(false)) return;
     if (m_impl->thread && m_impl->thread->joinable()) m_impl->thread->join();
+    m_impl->obsCam.close();
     std::lock_guard lock(m_impl->shmMutex);
     if (m_impl->shmView) UnmapViewOfFile(m_impl->shmView);
     if (m_impl->shmMap) CloseHandle(m_impl->shmMap);
@@ -272,7 +276,20 @@ void VideoTransformPipeline::loop() {
     status->sourceHeight = sourceHeight;
     status->message = "输出中";
     m_status.store(status);
-    HTB_INFO("[camera] output pipeline started: {}x{} source", sourceWidth, sourceHeight);
+
+    const bool useObs = cameraParams.outputTarget == 0;
+    if (useObs) {
+        if (!m_impl->obsCam.open(kOutWidth, kOutHeight, 10000000LL / 60)) {
+            status->message = m_impl->obsCam.lastError();
+            status->capturing = false;
+            status->running = false;
+            m_status.store(status);
+            HTB_ERROR("[camera] OBS virtual cam open failed: {}", status->message);
+            return;
+        }
+    }
+    HTB_INFO("[camera] output pipeline started: {}x{} source, target={}", sourceWidth, sourceHeight,
+             useObs ? "OBS Virtual Camera" : "HTB Virtual Camera");
 
     std::vector<uint8_t> srcFrame(kMaxSourceFrame);
     std::vector<uint8_t> outFrame(kOutFrameSize);
@@ -311,6 +328,12 @@ void VideoTransformPipeline::loop() {
                     memcpy(srcFrame.data(), data, frameSize);
                     transformNv12(srcFrame.data(), static_cast<int>(sourceWidth), static_cast<int>(sourceHeight),
                                   outFrame.data(), m_params.load());
+                    const auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                           std::chrono::system_clock::now().time_since_epoch())
+                                           .count();
+                    if (m_impl->obsCam.active()) {
+                        m_impl->obsCam.writeFrame(outFrame.data(), static_cast<uint64_t>(nowNs / 100));
+                    }
                     writeSharedMemory(outFrame.data(), outFrame.size());
                     ++framesSent;
                     ++windowFrames;
