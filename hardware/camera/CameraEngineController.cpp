@@ -100,8 +100,9 @@ std::string CameraEngineController::statusFilePath() {
 void CameraEngineController::writeParams(const CameraEngineParams& p, bool running) {
     std::ofstream out(paramsFilePath());
     if (!out) return;
-    out << "{\"camera_index\":" << p.cameraIndex << ",\"zoom\":" << p.zoom << ",\"pan_x\":" << p.panX
-        << ",\"pan_y\":" << p.panY << ",\"flip_h\":" << (p.flipHorizontal ? "true" : "false")
+    out << "{\"camera_index\":" << p.cameraIndex << ",\"rotation\":" << p.rotation << ",\"zoom\":" << p.zoom
+        << ",\"pan_x\":" << p.panX << ",\"pan_y\":" << p.panY
+        << ",\"flip_h\":" << (p.flipHorizontal ? "true" : "false")
         << ",\"flip_v\":" << (p.flipVertical ? "true" : "false") << ",\"brightness\":" << p.brightness
         << ",\"contrast\":" << p.contrast << ",\"saturation\":" << p.saturation
         << ",\"running\":" << (running ? "true" : "false") << "}";

@@ -15,6 +15,7 @@ STATUS_PATH = os.path.join(os.environ.get("TEMP", "."), "htb_cam_status.json")
 
 DEFAULT_PARAMS = {
     "camera_index": 0,
+    "rotation": 0,
     "zoom": 1.0,
     "pan_x": 0.0,
     "pan_y": 0.0,
@@ -93,6 +94,14 @@ def write_status(status):
                 f.write("status write failed: %s\n" % e)
         except Exception:
             pass
+
+
+def trace_log(msg):
+    try:
+        with open(os.path.join(os.environ.get("TEMP", "."), "htb_cam_engine.log"), "a") as f:
+            f.write("%.3f %s\n" % (time.time(), msg))
+    except Exception:
+        pass
 
 
 def parent_alive(pid):
@@ -182,6 +191,16 @@ def fit_to_size(frame, out_w, out_h):
 
 
 def transform(frame, p):
+    rotation = p.get("rotation", 0)
+    if rotation in (90, 180, 270):
+        if rotation == 90:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        elif rotation == 180:
+            frame = cv2.rotate(frame, cv2.ROTATE_180)
+        elif rotation == 270:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        frame = fit_to_size(frame, OUT_WIDTH, OUT_HEIGHT)
+
     if p["flip_h"] and p["flip_v"]:
         frame = cv2.flip(frame, -1)
     elif p["flip_h"]:
@@ -267,6 +286,7 @@ def main():
 
         ok, frame = cap.read()
         if not ok:
+            trace_log("read failed")
             cap.release()
             cap = None
             _send_placeholder(cam, "Camera Disconnected - Retrying...")
@@ -275,19 +295,24 @@ def main():
             continue
 
         try:
+            trace_log("read ok")
             out = transform(frame, params)
+            trace_log("transformed")
             cam.send(out)
+            trace_log("sent")
             cam.sleep_until_next_frame()
+            trace_log("slept")
             frames += 1
             preview.write(out)
+            trace_log("preview written")
             now = time.time()
             if now - last >= 2.0:
                 fps_win = frames / (now - last) if now > last else 0.0
                 write_status({"running": True, "fps": round(fps_win, 1), "frames": frames,
                               "error": "", "source": "%dx%d" % (sw, sh)})
                 last = now
-        except Exception:
-            pass
+        except Exception as e:
+            trace_log("loop exception: %s" % e)
         time.sleep(0.001)
 
     if cap is not None:

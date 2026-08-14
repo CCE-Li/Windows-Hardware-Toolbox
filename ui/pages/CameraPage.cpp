@@ -143,6 +143,17 @@ void CameraPage::draw(UiContext& ctx) {
             if (ImGui::Checkbox("垂直翻转", &params.flipVertical)) {
                 if (running) ctx.service.updatePythonEngine(params);
             }
+            ImGui::SameLine();
+            ImGui::Text("旋转:");
+            const int rotations[] = {0, 90, 180, 270};
+            for (int r : rotations) {
+                ImGui::SameLine();
+                const char* label = r == 0 ? "0°" : (r == 90 ? "90°" : (r == 180 ? "180°" : "270°"));
+                if (ImGui::RadioButton(label, params.rotation == r)) {
+                    params.rotation = r;
+                    if (running) ctx.service.updatePythonEngine(params);
+                }
+            }
             if (ImGui::SliderInt("亮度", &params.brightness, -100, 100)) {
                 if (running) ctx.service.updatePythonEngine(params);
             }
@@ -173,7 +184,7 @@ void CameraPage::draw(UiContext& ctx) {
                                "在其他应用中即可选择。");
 
             ImGui::Spacing();
-            ImGui::Text("预览 (拖拽平移 / 滚轮缩放 / 双击重置)");
+            ImGui::Text("预览 (拖拽平移 / Ctrl+滚轮缩放 / 双击重置)");
             ImGui::Separator();
             static PreviewState previewState;
             static PreviewCanvas previewCanvas;

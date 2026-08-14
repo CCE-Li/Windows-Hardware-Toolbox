@@ -35,7 +35,7 @@ void PreviewCanvas::draw(ID3D11ShaderResourceView* frame, float frameW, float fr
 
     const ImVec2 mouse = ImGui::GetIO().MousePos;
 
-    if (ImGui::IsItemHovered() && ImGui::GetIO().MouseWheel != 0.0f) {
+    if (ImGui::IsItemHovered() && ImGui::GetIO().KeyCtrl && ImGui::GetIO().MouseWheel != 0.0f) {
         const float newZoom = std::clamp(zoom * (ImGui::GetIO().MouseWheel > 0.0f ? 1.1f : 1.0f / 1.1f), kMinZoom, kMaxZoom);
         if (newZoom != zoom && onChange) {
             const float nfW = m_canvasSize.x * newZoom;

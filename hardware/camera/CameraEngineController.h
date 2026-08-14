@@ -8,6 +8,7 @@ namespace htb {
 
 struct CameraEngineParams {
     int cameraIndex = 0;
+    int rotation = 0;
     float zoom = 1.0f;
     float panX = 0.0f;
     float panY = 0.0f;
