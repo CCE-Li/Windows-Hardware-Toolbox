@@ -4,3 +4,6 @@ build/
 out/
 *.user
 CMakeUserPresets.json
+
+__pycache__/
+*.pyc
