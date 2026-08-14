@@ -78,6 +78,43 @@ def compute_crop(w, h, zoom, pan_x, pan_y):
     return x, y, new_w, new_h
 
 
+def _init_camera(index):
+    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    if not cap.isOpened():
+        return None
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    try:
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+        cap.set(cv2.CAP_PROP_EXPOSURE, -5)
+        cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+    except Exception:
+        pass
+    return cap
+
+
+def _warmup(cap, n):
+    for _ in range(n):
+        cap.grab()
+
+
+def _restore_auto_exposure(cap):
+    try:
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
+    except Exception:
+        pass
+
+
+def _send_placeholder(cam, text):
+    canvas = np.zeros((OUT_HEIGHT, OUT_WIDTH, 3), dtype=np.uint8)
+    cv2.putText(canvas, text, (60, OUT_HEIGHT // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+    try:
+        cam.send(canvas)
+        cam.sleep_until_next_frame()
+    except Exception:
+        pass
+
+
 def fit_to_size(frame, out_w, out_h):
     h, w = frame.shape[:2]
     if w <= 0 or h <= 0:
@@ -146,22 +183,15 @@ def main():
                       "error": "无法打开 OBS Virtual Camera: %s" % e, "source": ""})
         return 1
 
-    try:
-        cap = cv2.VideoCapture(params["camera_index"], cv2.CAP_DSHOW)
-        if not cap.isOpened():
-            write_status({"running": False, "fps": 0, "frames": 0,
-                          "error": "无法打开摄像头 %d（可能被其他应用占用）" % params["camera_index"], "source": ""})
-            return 1
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        for _ in range(10):
-            cap.grab()
-        sw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        sh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    except Exception as e:
+    cap = _init_camera(params["camera_index"])
+    if cap is None:
         write_status({"running": False, "fps": 0, "frames": 0,
-                      "error": "摄像头初始化失败: %s" % e, "source": ""})
+                      "error": "无法打开摄像头 %d（可能被其他应用占用）" % params["camera_index"], "source": ""})
         return 1
+    _warmup(cap, 10)
+    _restore_auto_exposure(cap)
+    sw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    sh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     write_status({"running": True, "fps": 0, "frames": 0, "error": "", "source": "%dx%d" % (sw, sh)})
 
@@ -170,11 +200,29 @@ def main():
         if not params.get("running", True):
             break
 
+        if cap is None:
+            cap = _init_camera(params["camera_index"])
+            if cap is not None:
+                _warmup(cap, 5)
+                _restore_auto_exposure(cap)
+                sw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                sh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                write_status({"running": True, "fps": fps_win, "frames": frames,
+                              "error": "", "source": "%dx%d" % (sw, sh)})
+            else:
+                _send_placeholder(cam, "Camera Disconnected - Retrying...")
+                write_status({"running": True, "fps": fps_win, "frames": frames,
+                              "error": "摄像头断开，正在重试...", "source": ""})
+                time.sleep(2)
+                continue
+
         ok, frame = cap.read()
         if not ok:
+            cap.release()
+            cap = None
+            _send_placeholder(cam, "Camera Disconnected - Retrying...")
             write_status({"running": True, "fps": fps_win, "frames": frames,
-                          "error": "读取帧失败，正在重试...", "source": "%dx%d" % (sw, sh)})
-            time.sleep(0.5)
+                          "error": "摄像头断开，正在重试...", "source": "%dx%d" % (sw, sh)})
             continue
 
         try:
