@@ -1,6 +1,8 @@
 import ctypes
 import json
+import mmap
 import os
+import struct
 import sys
 import time
 
@@ -35,36 +37,38 @@ PREVIEW_SIZE = OUT_WIDTH * OUT_HEIGHT * 3
 
 class PreviewShm:
     def __init__(self):
-        self.handle = None
-        self.view = None
-        total = PREVIEW_HEADER + PREVIEW_SIZE
+        self.mm = None
+        self._header_ready = False
         try:
-            self.handle = ctypes.windll.kernel32.CreateFileMappingW(
-                ctypes.c_void_p(-1), None, 4, 0, total, PREVIEW_NAME)
-            if self.handle:
-                self.view = ctypes.windll.kernel32.MapViewOfFile(self.handle, 0xF003F, 0, 0, 0)
+            self.mm = mmap.mmap(-1, PREVIEW_HEADER + PREVIEW_SIZE, tagname=PREVIEW_NAME)
         except Exception:
-            self.handle = None
-            self.view = None
+            self.mm = None
 
     def write(self, bgr):
-        if not self.view:
+        if not self.mm:
             return
         try:
-            data = (ctypes.c_ubyte * PREVIEW_SIZE).from_buffer_copy(bgr.tobytes())
-            ctypes.memmove(ctypes.c_void_p(self.view + PREVIEW_HEADER), data, PREVIEW_SIZE)
-            gen = ctypes.c_uint32.from_address(self.view + 32)
-            gen.value += 1
+            if not self._header_ready:
+                self.mm.seek(0)
+                self.mm.write(struct.pack("<IIIII", 0x48544250, OUT_WIDTH, OUT_HEIGHT, PREVIEW_SIZE, 0))
+                self.mm.write(b"\x00" * (PREVIEW_HEADER - 20))
+                self._header_ready = True
+            self.mm.seek(PREVIEW_HEADER)
+            self.mm.write(bgr.tobytes())
+            self.mm.seek(16)
+            gen = struct.unpack("<I", self.mm.read(4))[0] + 1
+            self.mm.seek(16)
+            self.mm.write(struct.pack("<I", gen))
         except Exception:
             pass
 
     def close(self):
-        if self.view:
-            ctypes.windll.kernel32.UnmapViewOfFile(self.view)
-        if self.handle:
-            ctypes.windll.kernel32.CloseHandle(self.handle)
-        self.view = None
-        self.handle = None
+        if self.mm:
+            try:
+                self.mm.close()
+            except Exception:
+                pass
+            self.mm = None
 
 
 def load_params():
@@ -79,22 +83,28 @@ def load_params():
 
 
 def write_status(status):
+    status["ts"] = time.time()
     try:
         with open(STATUS_PATH, "w", encoding="utf-8") as f:
             json.dump(status, f)
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            with open(os.path.join(os.environ.get("TEMP", "."), "htb_cam_engine.log"), "a") as f:
+                f.write("status write failed: %s\n" % e)
+        except Exception:
+            pass
 
 
 def parent_alive(pid):
     try:
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        ctypes.windll.kernel32.OpenProcess.restype = ctypes.c_void_p
         h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not h:
             return False
         code = ctypes.c_ulong()
-        ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
-        ctypes.windll.kernel32.CloseHandle(h)
+        ctypes.windll.kernel32.GetExitCodeProcess(ctypes.c_void_p(h), ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(h))
         return code.value == 259
     except Exception:
         return True
@@ -270,15 +280,15 @@ def main():
             cam.sleep_until_next_frame()
             frames += 1
             preview.write(out)
+            now = time.time()
+            if now - last >= 2.0:
+                fps_win = frames / (now - last) if now > last else 0.0
+                write_status({"running": True, "fps": round(fps_win, 1), "frames": frames,
+                              "error": "", "source": "%dx%d" % (sw, sh)})
+                last = now
         except Exception:
             pass
-
-        now = time.time()
-        if now - last >= 2.0:
-            fps_win = frames / (now - last) if now > last else 0.0
-            write_status({"running": True, "fps": round(fps_win, 1), "frames": frames,
-                          "error": "", "source": "%dx%d" % (sw, sh)})
-            last = now
+        time.sleep(0.001)
 
     if cap is not None:
         cap.release()

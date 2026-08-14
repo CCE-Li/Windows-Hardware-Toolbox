@@ -4,6 +4,7 @@
 
 #include <windows.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -59,11 +60,20 @@ void parseStatusJson(const std::string& text, CameraEngineStatus& out) {
     const std::string fps = extract("fps");
     const std::string frames = extract("frames");
     const std::string source = extract("source");
+    const std::string ts = extract("ts");
     out.running = running == "true";
     out.fps = fps.empty() ? 0.0 : std::stod(fps);
     out.frames = frames.empty() ? 0 : std::stoull(frames);
     out.source = source;
     out.error = extract("error");
+    if (!ts.empty()) {
+        const double age = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count() -
+                           std::stod(ts);
+        if (age > 5.0) {
+            out.running = false;
+            out.error = "引擎无响应（状态超过 5 秒未更新）";
+        }
+    }
 }
 } // namespace
 
@@ -99,6 +109,15 @@ void CameraEngineController::writeParams(const CameraEngineParams& p, bool runni
 
 void CameraEngineController::start(const CameraEngineParams& params) {
     if (m_impl->started) return;
+    if (m_impl->proc.hProcess) {
+        DWORD code = 0;
+        if (GetExitCodeProcess(m_impl->proc.hProcess, &code) && code == STILL_ACTIVE) {
+            TerminateProcess(m_impl->proc.hProcess, 1);
+        }
+        CloseHandle(m_impl->proc.hProcess);
+        CloseHandle(m_impl->proc.hThread);
+        m_impl->proc = {};
+    }
     m_impl->lastParams = params;
     writeParams(params, true);
     std::filesystem::remove(statusFilePath());
