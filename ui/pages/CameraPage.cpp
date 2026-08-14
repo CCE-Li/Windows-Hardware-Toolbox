@@ -10,6 +10,7 @@
 #include "hardware/camera/CameraEngineController.h"
 #include "hardware/camera/CameraProvider.h"
 #include "hardware/camera/FrameShm.h"
+#include "ui/widgets/PreviewCanvas.h"
 
 #include "imgui.h"
 
@@ -24,21 +25,14 @@ struct PreviewState {
     uint32_t lastGen = 0;
 };
 
-void drawPreview(UiContext& ctx) {
-    static PreviewState ps;
+ID3D11ShaderResourceView* updatePreviewTexture(UiContext& ctx, PreviewState& ps) {
     if (!ps.map) {
         ps.map = OpenFileMappingW(FILE_MAP_READ, FALSE, kPreviewShmName);
         if (ps.map) ps.view = static_cast<uint8_t*>(MapViewOfFile(ps.map, FILE_MAP_READ, 0, 0, 0));
     }
-    if (!ps.map || !ps.view || !ctx.d3dDevice || !ctx.d3dContext) {
-        ImGui::TextDisabled("预览不可用（引擎未运行）");
-        return;
-    }
+    if (!ps.map || !ps.view || !ctx.d3dDevice || !ctx.d3dContext) return nullptr;
     const auto* header = reinterpret_cast<const PreviewShmHeader*>(ps.view);
-    if (header->magic != kPreviewShmMagic) {
-        ImGui::TextDisabled("等待预览数据...");
-        return;
-    }
+    if (header->magic != kPreviewShmMagic) return nullptr;
     if (ps.lastGen != header->generation) {
         ps.lastGen = header->generation;
         const uint8_t* bgr = ps.view + kPreviewShmHeaderSize;
@@ -76,12 +70,7 @@ void drawPreview(UiContext& ctx) {
             }
         }
     }
-    if (ps.srv) {
-        const ImVec2 avail = ImGui::GetContentRegionAvail();
-        const float scale = std::min(avail.x / kPreviewShmWidth, 400.0f / kPreviewShmHeight);
-        ImGui::Image(reinterpret_cast<ImTextureID>(ps.srv.Get()),
-                     ImVec2(kPreviewShmWidth * scale, kPreviewShmHeight * scale));
-    }
+    return ps.srv.Get();
 }
 } // namespace
 
@@ -184,9 +173,23 @@ void CameraPage::draw(UiContext& ctx) {
                                "在其他应用中即可选择。");
 
             ImGui::Spacing();
-            ImGui::Text("预览");
+            ImGui::Text("预览 (拖拽平移 / 滚轮缩放 / 双击重置)");
             ImGui::Separator();
-            drawPreview(ctx);
+            static PreviewState previewState;
+            static PreviewCanvas previewCanvas;
+            ID3D11ShaderResourceView* frameSrv = updatePreviewTexture(ctx, previewState);
+            if (!frameSrv) {
+                ImGui::TextDisabled("预览不可用（引擎未运行或尚无数据）");
+            } else {
+                previewCanvas.draw(frameSrv, static_cast<float>(kPreviewShmWidth),
+                                   static_cast<float>(kPreviewShmHeight), params.zoom, params.panX, params.panY,
+                                   [&](float newZoom, float newPanX, float newPanY) {
+                                       params.zoom = newZoom;
+                                       params.panX = newPanX;
+                                       params.panY = newPanY;
+                                       if (running) ctx.service.updatePythonEngine(params);
+                                   });
+            }
         }
     }
 
