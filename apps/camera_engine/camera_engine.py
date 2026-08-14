@@ -28,6 +28,44 @@ OUT_WIDTH = 1280
 OUT_HEIGHT = 720
 OUT_FPS = 30
 
+PREVIEW_NAME = "Local\\HTB_Camera_Preview"
+PREVIEW_HEADER = 64
+PREVIEW_SIZE = OUT_WIDTH * OUT_HEIGHT * 3
+
+
+class PreviewShm:
+    def __init__(self):
+        self.handle = None
+        self.view = None
+        total = PREVIEW_HEADER + PREVIEW_SIZE
+        try:
+            self.handle = ctypes.windll.kernel32.CreateFileMappingW(
+                ctypes.c_void_p(-1), None, 4, 0, total, PREVIEW_NAME)
+            if self.handle:
+                self.view = ctypes.windll.kernel32.MapViewOfFile(self.handle, 0xF003F, 0, 0, 0)
+        except Exception:
+            self.handle = None
+            self.view = None
+
+    def write(self, bgr):
+        if not self.view:
+            return
+        try:
+            data = (ctypes.c_ubyte * PREVIEW_SIZE).from_buffer_copy(bgr.tobytes())
+            ctypes.memmove(ctypes.c_void_p(self.view + PREVIEW_HEADER), data, PREVIEW_SIZE)
+            gen = ctypes.c_uint32.from_address(self.view + 32)
+            gen.value += 1
+        except Exception:
+            pass
+
+    def close(self):
+        if self.view:
+            ctypes.windll.kernel32.UnmapViewOfFile(self.view)
+        if self.handle:
+            ctypes.windll.kernel32.CloseHandle(self.handle)
+        self.view = None
+        self.handle = None
+
 
 def load_params():
     try:
@@ -175,6 +213,7 @@ def main():
     frames = 0
     last = time.time()
     fps_win = 0.0
+    preview = PreviewShm()
 
     try:
         cam = pyvirtualcam.Camera(width=OUT_WIDTH, height=OUT_HEIGHT, fps=OUT_FPS)
@@ -230,6 +269,7 @@ def main():
             cam.send(out)
             cam.sleep_until_next_frame()
             frames += 1
+            preview.write(out)
         except Exception:
             pass
 
@@ -242,6 +282,7 @@ def main():
 
     if cap is not None:
         cap.release()
+    preview.close()
     write_status({"running": False, "fps": 0, "frames": frames, "error": "", "source": ""})
     return 0
 

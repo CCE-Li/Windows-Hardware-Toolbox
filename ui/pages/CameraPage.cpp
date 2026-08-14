@@ -1,13 +1,89 @@
 #include "ui/pages/CameraPage.h"
 
+#include <algorithm>
 #include <string>
+
+#include <d3d11.h>
+#include <windows.h>
+#include <wrl/client.h>
 
 #include "hardware/camera/CameraEngineController.h"
 #include "hardware/camera/CameraProvider.h"
+#include "hardware/camera/FrameShm.h"
 
 #include "imgui.h"
 
 namespace htb {
+
+namespace {
+struct PreviewState {
+    HANDLE map = nullptr;
+    uint8_t* view = nullptr;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> srv;
+    uint32_t lastGen = 0;
+};
+
+void drawPreview(UiContext& ctx) {
+    static PreviewState ps;
+    if (!ps.map) {
+        ps.map = OpenFileMappingW(FILE_MAP_READ, FALSE, kPreviewShmName);
+        if (ps.map) ps.view = static_cast<uint8_t*>(MapViewOfFile(ps.map, FILE_MAP_READ, 0, 0, 0));
+    }
+    if (!ps.map || !ps.view || !ctx.d3dDevice || !ctx.d3dContext) {
+        ImGui::TextDisabled("预览不可用（引擎未运行）");
+        return;
+    }
+    const auto* header = reinterpret_cast<const PreviewShmHeader*>(ps.view);
+    if (header->magic != kPreviewShmMagic) {
+        ImGui::TextDisabled("等待预览数据...");
+        return;
+    }
+    if (ps.lastGen != header->generation) {
+        ps.lastGen = header->generation;
+        const uint8_t* bgr = ps.view + kPreviewShmHeaderSize;
+
+        if (!ps.texture) {
+            D3D11_TEXTURE2D_DESC desc{};
+            desc.Width = kPreviewShmWidth;
+            desc.Height = kPreviewShmHeight;
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.SampleDesc.Count = 1;
+            desc.Usage = D3D11_USAGE_DYNAMIC;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            ctx.d3dDevice->CreateTexture2D(&desc, nullptr, &ps.texture);
+            ctx.d3dDevice->CreateShaderResourceView(ps.texture.Get(), nullptr, &ps.srv);
+        }
+        if (ps.texture && ps.srv) {
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (SUCCEEDED(ctx.d3dContext->Map(ps.texture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+                const size_t w = kPreviewShmWidth;
+                const size_t h = kPreviewShmHeight;
+                for (size_t row = 0; row < h; ++row) {
+                    const uint8_t* s = bgr + row * w * 3;
+                    uint8_t* d = static_cast<uint8_t*>(mapped.pData) + row * mapped.RowPitch;
+                    for (size_t col = 0; col < w; ++col) {
+                        d[col * 4 + 0] = s[col * 3 + 0];
+                        d[col * 4 + 1] = s[col * 3 + 1];
+                        d[col * 4 + 2] = s[col * 3 + 2];
+                        d[col * 4 + 3] = 255;
+                    }
+                }
+                ctx.d3dContext->Unmap(ps.texture.Get(), 0);
+            }
+        }
+    }
+    if (ps.srv) {
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const float scale = std::min(avail.x / kPreviewShmWidth, 400.0f / kPreviewShmHeight);
+        ImGui::Image(reinterpret_cast<ImTextureID>(ps.srv.Get()),
+                     ImVec2(kPreviewShmWidth * scale, kPreviewShmHeight * scale));
+    }
+}
+} // namespace
 
 void CameraPage::draw(UiContext& ctx) {
     ImGui::Text("摄像头");
@@ -106,6 +182,11 @@ void CameraPage::draw(UiContext& ctx) {
             ImGui::TextWrapped("提示: 引擎为独立 Python 进程 (OpenCV + pyvirtualcam)。"
                                "开始前请关闭微信/QQ 等占用摄像头的应用；输出目标为 OBS Virtual Camera，"
                                "在其他应用中即可选择。");
+
+            ImGui::Spacing();
+            ImGui::Text("预览");
+            ImGui::Separator();
+            drawPreview(ctx);
         }
     }
 

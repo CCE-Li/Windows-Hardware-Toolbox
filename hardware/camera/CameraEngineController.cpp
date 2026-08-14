@@ -101,6 +101,7 @@ void CameraEngineController::start(const CameraEngineParams& params) {
     if (m_impl->started) return;
     m_impl->lastParams = params;
     writeParams(params, true);
+    std::filesystem::remove(statusFilePath());
 
     const std::string python = findPython();
     const std::string script = moduleDirectory() + "\\camera_engine.py";
@@ -151,11 +152,21 @@ void CameraEngineController::poll() {
         std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         parseStatusJson(text, *status);
     }
-    if (m_impl->started && !status->running) {
-        m_impl->started = false;
-        if (m_impl->proc.hProcess) {
+    if (m_impl->started) {
+        DWORD code = 0;
+        if (!GetExitCodeProcess(m_impl->proc.hProcess, &code) || code != STILL_ACTIVE) {
+            m_impl->started = false;
+            if (code != 0 && code != STILL_ACTIVE) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "引擎已退出 (退出码 %lu)", static_cast<unsigned long>(code));
+                status->error = buf;
+            } else if (!status->running) {
+                status->error = "引擎已退出";
+            }
+            status->running = false;
             CloseHandle(m_impl->proc.hProcess);
             CloseHandle(m_impl->proc.hThread);
+            HTB_WARN("[camera] python engine exited with code {}", static_cast<unsigned long>(code));
         }
     }
     m_status.store(status);

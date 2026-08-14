@@ -30,8 +30,8 @@ void addPage(std::vector<std::unique_ptr<IPage>>& pages, Args&&... args) {
 }
 } // namespace
 
-UiApp::UiApp(HardwareService& service, Config config)
-    : m_service(service), m_config(std::move(config)), m_ctx{service} {
+UiApp::UiApp(HardwareService& service, Config config, ID3D11Device* d3dDevice, ID3D11DeviceContext* d3dContext)
+    : m_service(service), m_config(std::move(config)), m_ctx{service, d3dDevice, d3dContext} {
     addPage<DashboardPage>(m_pages);
     addPage<CpuPage>(m_pages);
     addPage<GpuPage>(m_pages);

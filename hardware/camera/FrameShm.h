@@ -26,4 +26,22 @@ struct FrameShmHeader {
 
 constexpr size_t kFrameShmTotalSize = sizeof(FrameShmHeader) + kFrameShmMaxData;
 
+constexpr uint32_t kPreviewShmMagic = 0x48544250;
+constexpr uint32_t kPreviewShmWidth = kFrameShmOutWidth;
+constexpr uint32_t kPreviewShmHeight = kFrameShmOutHeight;
+constexpr size_t kPreviewShmDataSize = static_cast<size_t>(kPreviewShmWidth) * kPreviewShmHeight * 3;
+constexpr size_t kPreviewShmHeaderSize = 64;
+constexpr size_t kPreviewShmTotalSize = kPreviewShmHeaderSize + kPreviewShmDataSize;
+constexpr const wchar_t* kPreviewShmName = L"Local\\HTB_Camera_Preview";
+
+struct PreviewShmHeader {
+    uint32_t magic;
+    uint32_t width;
+    uint32_t height;
+    uint32_t dataSize;
+    uint32_t generation;
+    uint64_t timestamp;
+    uint32_t reserved[2];
+};
+
 } // namespace htb

@@ -187,7 +187,7 @@ int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmd
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
 
-    htb::UiApp uiApp(service, service.config());
+    htb::UiApp uiApp(service, service.config(), g_device.Get(), g_context.Get());
     if (cmdLine && wcsstr(cmdLine, L"--page=camera")) {
         uiApp.setInitialPage("摄像头");
     }
