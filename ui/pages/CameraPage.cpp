@@ -111,59 +111,6 @@ void CameraPage::draw(UiContext& ctx) {
 
     ImGui::Spacing();
     ImGui::Separator();
-    if (ImGui::CollapsingHeader("实验性: MF 虚拟摄像头注册（需管理员，系统组件可能有兼容问题）")) {
-        static char nameBuf[128]{};
-        if (nameBuf[0] == '\0') {
-            snprintf(nameBuf, sizeof(nameBuf), "%s", "Hardware Toolbox 虚拟摄像头");
-        }
-
-        ImGui::SetNextItemWidth(320.0f);
-        ImGui::InputText("名称", nameBuf, sizeof(nameBuf));
-        ImGui::SameLine();
-        static bool pendingElevation = false;
-        static std::string pendingOperation;
-        if (ImGui::Button("创建虚拟摄像头")) {
-            ctx.service.createVirtualCamera(nameBuf);
-            if (!ctx.service.isElevated()) {
-                pendingElevation = true;
-                pendingOperation = "创建虚拟摄像头";
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("移除虚拟摄像头")) {
-            ctx.service.removeVirtualCamera();
-            if (!ctx.service.isElevated()) {
-                pendingElevation = true;
-                pendingOperation = "移除虚拟摄像头";
-            }
-        }
-        if (pendingElevation) {
-            ctx.service.virtualCamera().pollPendingResult(pendingOperation);
-            const auto pending = ctx.service.virtualCamera().lastStatus();
-            if (pending && !pending->inProgress && !pending->operation.empty()) {
-                pendingElevation = false;
-            }
-        }
-        if (!ctx.service.isElevated()) {
-            ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f),
-                               "点击后将弹出 UAC 提升提示，确认后在新窗口自动完成注册。");
-        }
-
-        const auto status = ctx.service.virtualCamera().lastStatus();
-        if (status && !status->operation.empty()) {
-            if (status->inProgress) {
-                ImGui::Text("正在%s...", status->operation.c_str());
-            } else if (status->success) {
-                ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f), "%s成功", status->operation.c_str());
-            } else {
-                ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s: %s", status->operation.c_str(),
-                                   status->message.c_str());
-            }
-        }
-    }
-
-    ImGui::Spacing();
-    ImGui::Separator();
     ImGui::Text("已检测的摄像头");
     ImGui::Separator();
 
