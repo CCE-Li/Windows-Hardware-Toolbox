@@ -262,8 +262,9 @@ void VideoTransformPipeline::loop() {
 
     if (FAILED(hr) || !reader) {
         if (status->message.empty()) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "无法打开摄像头 (0x%08X)", static_cast<unsigned>(hr));
+            char buf[96];
+            snprintf(buf, sizeof(buf), "无法打开摄像头 (0x%08X)。摄像头可能被其他应用（微信/QQ/会议软件）占用", 
+                     static_cast<unsigned>(hr));
             status->message = buf;
         }
         status->running = false;

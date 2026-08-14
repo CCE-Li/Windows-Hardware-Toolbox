@@ -35,9 +35,7 @@ void CameraPage::draw(UiContext& ctx) {
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::Text("虚拟摄像头");
-    ImGui::Separator();
-    {
+    if (ImGui::CollapsingHeader("实验性: MF 虚拟摄像头注册（需管理员，系统组件可能有兼容问题）")) {
         static char nameBuf[128]{};
         if (nameBuf[0] == '\0') {
             snprintf(nameBuf, sizeof(nameBuf), "%s", "Hardware Toolbox 虚拟摄像头");
@@ -74,9 +72,6 @@ void CameraPage::draw(UiContext& ctx) {
             ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f),
                                "点击后将弹出 UAC 提升提示，确认后在新窗口自动完成注册。");
         }
-        ImGui::TextColored(ImVec4(0.90f, 0.75f, 0.30f, 1.0f),
-                           "提示: 本系统的 MF 虚拟摄像头组件 (FrameServerMonitorClient) 存在兼容性问题，"
-                           "建议优先使用下方“实时输出”的 OBS Virtual Camera 方案（无需管理员）。");
 
         const auto status = ctx.service.virtualCamera().lastStatus();
         if (status && !status->operation.empty()) {

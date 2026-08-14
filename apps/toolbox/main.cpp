@@ -13,6 +13,7 @@
 #include "core/config/Config.h"
 #include "core/logging/Logger.h"
 #include "core/util/Utf.h"
+#include "hardware/camera/VideoTransformPipeline.h"
 #include "hardware/camera/VirtualCameraController.h"
 #include "hardware/camera/VirtualCameraRegistrar.h"
 #include "services/HardwareService.h"
@@ -282,6 +283,21 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
 
     const bool autoRegister = cmdLine && wcsstr(cmdLine, L"--auto-register-vcamera") != nullptr;
     const bool autoUnregister = cmdLine && wcsstr(cmdLine, L"--auto-unregister-vcamera") != nullptr;
+
+    if (cmdLine && wcsstr(cmdLine, L"--test-obs-output")) {
+        htb::Logger::init(true);
+        htb::CameraOutputParams params{};
+        params.outputTarget = 0;
+        htb::VideoTransformPipeline pipeline;
+        pipeline.start(params);
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        pipeline.stop();
+        const auto status = pipeline.status();
+        HTB_INFO("[app] OBS output test: running={} capturing={} frames={} fps={:.1f} msg={}", status->running,
+                 status->capturing, static_cast<unsigned long long>(status->framesSent), status->fps,
+                 status->message);
+        return 0;
+    }
 
     htb::Config config = htb::Config::load();
     HTB_INFO("[app] Hardware Toolbox v{} starting", HTB_VERSION_STRING);
