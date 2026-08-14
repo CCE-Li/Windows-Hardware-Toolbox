@@ -1,6 +1,7 @@
 add_library(htb_hardware STATIC
     audio/AudioProvider.cpp
     battery/BatteryProvider.cpp
+    camera/CameraEngineController.cpp
     camera/CameraProvider.cpp
     camera/ObsVirtualCam.cpp
     camera/VideoTransformPipeline.cpp

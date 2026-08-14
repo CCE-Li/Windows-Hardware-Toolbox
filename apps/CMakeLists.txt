@@ -1,2 +1,3 @@
 add_subdirectory(toolbox)
 add_subdirectory(virtualcamera)
+add_subdirectory(camera_engine)

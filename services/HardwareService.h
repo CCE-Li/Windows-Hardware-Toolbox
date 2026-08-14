@@ -10,6 +10,7 @@
 #include "core/config/Config.h"
 #include "hardware/audio/AudioProvider.h"
 #include "hardware/battery/BatteryProvider.h"
+#include "hardware/camera/CameraEngineController.h"
 #include "hardware/camera/CameraProvider.h"
 #include "hardware/camera/VideoTransformPipeline.h"
 #include "hardware/camera/VirtualCameraController.h"
@@ -86,6 +87,14 @@ public:
         return m_cameraOutput->status();
     }
 
+    void startPythonEngine(const CameraEngineParams& params) { m_cameraEngine->start(params); }
+    void updatePythonEngine(const CameraEngineParams& params) { m_cameraEngine->updateParams(params); }
+    void stopPythonEngine() { m_cameraEngine->stop(); }
+    void pollPythonEngine() { m_cameraEngine->poll(); }
+    std::shared_ptr<const CameraEngineStatus> pythonEngineStatus() const {
+        return m_cameraEngine->status();
+    }
+
     const Config& config() const { return m_config; }
     int intervalMs() const { return m_intervalMs; }
     std::chrono::steady_clock::time_point lastRefresh() const;
@@ -112,6 +121,7 @@ private:
     std::unique_ptr<DisplayProvider> m_display;
     std::unique_ptr<VirtualCameraController> m_virtualCamera;
     std::unique_ptr<VideoTransformPipeline> m_cameraOutput;
+    std::unique_ptr<CameraEngineController> m_cameraEngine;
 
     VcameraAction m_pendingVcamAction = VcameraAction::None;
     std::string m_pendingVcamName;

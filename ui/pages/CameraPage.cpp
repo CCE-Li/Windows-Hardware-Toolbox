@@ -2,8 +2,8 @@
 
 #include <string>
 
+#include "hardware/camera/CameraEngineController.h"
 #include "hardware/camera/CameraProvider.h"
-#include "hardware/camera/VideoTransformPipeline.h"
 
 #include "imgui.h"
 
@@ -27,10 +27,86 @@ void CameraPage::draw(UiContext& ctx) {
         ctx.service.clearPendingVcameraAction();
     }
 
+    ctx.service.pollPythonEngine();
     auto cameras = ctx.service.camera().snapshot();
     if (!cameras) {
         ImGui::Text("正在采集...");
         return;
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("实时输出 (Python 引擎 -> OBS Virtual Camera)");
+    ImGui::Separator();
+    {
+        static CameraEngineParams params;
+        static int selectedCamera = 0;
+        const auto status = ctx.service.pythonEngineStatus();
+        const bool running = status && status->running;
+
+        if (cameras->empty()) {
+            ImGui::Text("未检测到摄像头，无法启动实时输出");
+        } else {
+            ImGui::SetNextItemWidth(320.0f);
+            if (ImGui::BeginCombo("摄像头", selectedCamera < static_cast<int>(cameras->size())
+                                              ? cameras->at(static_cast<size_t>(selectedCamera)).name.c_str()
+                                              : "-")) {
+                for (size_t i = 0; i < cameras->size(); ++i) {
+                    const std::string label = std::to_string(i) + ": " + cameras->at(i).name;
+                    if (ImGui::Selectable(label.c_str(), selectedCamera == static_cast<int>(i))) {
+                        selectedCamera = static_cast<int>(i);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::TextDisabled("输出: OBS Virtual Camera (1280x720, 无需管理员)");
+
+            params.cameraIndex = selectedCamera;
+            if (ImGui::SliderFloat("缩放", &params.zoom, 1.0f, 3.0f, "%.2fx")) {
+                if (running) ctx.service.updatePythonEngine(params);
+            }
+            if (ImGui::SliderFloat("水平平移", &params.panX, -1.0f, 1.0f, "%.2f")) {
+                if (running) ctx.service.updatePythonEngine(params);
+            }
+            if (ImGui::SliderFloat("垂直平移", &params.panY, -1.0f, 1.0f, "%.2f")) {
+                if (running) ctx.service.updatePythonEngine(params);
+            }
+            if (ImGui::Checkbox("水平翻转", &params.flipHorizontal)) {
+                if (running) ctx.service.updatePythonEngine(params);
+            }
+            ImGui::SameLine();
+            if (ImGui::Checkbox("垂直翻转", &params.flipVertical)) {
+                if (running) ctx.service.updatePythonEngine(params);
+            }
+            if (ImGui::SliderInt("亮度", &params.brightness, -100, 100)) {
+                if (running) ctx.service.updatePythonEngine(params);
+            }
+            if (ImGui::SliderInt("对比度", &params.contrast, -100, 100)) {
+                if (running) ctx.service.updatePythonEngine(params);
+            }
+            if (ImGui::SliderInt("饱和度", &params.saturation, -100, 100)) {
+                if (running) ctx.service.updatePythonEngine(params);
+            }
+
+            if (running) {
+                if (ImGui::Button("停止输出")) ctx.service.stopPythonEngine();
+            } else {
+                if (ImGui::Button("开始输出")) ctx.service.startPythonEngine(params);
+            }
+
+            if (status) {
+                if (status->running) {
+                    ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f),
+                                       "运行中 | 源 %s | %.1f fps | 已发送 %llu 帧", status->source.c_str(),
+                                       status->fps, static_cast<unsigned long long>(status->frames));
+                } else if (!status->error.empty()) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s", status->error.c_str());
+                }
+            }
+            ImGui::TextWrapped("提示: 引擎为独立 Python 进程 (OpenCV + pyvirtualcam)。"
+                               "开始前请关闭微信/QQ 等占用摄像头的应用；输出目标为 OBS Virtual Camera，"
+                               "在其他应用中即可选择。");
+        }
     }
 
     ImGui::Spacing();
@@ -83,102 +159,6 @@ void CameraPage::draw(UiContext& ctx) {
                 ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s: %s", status->operation.c_str(),
                                    status->message.c_str());
             }
-        }
-    }
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Text("实时输出 (真实摄像头 -> 变换 -> 虚拟摄像头)");
-    ImGui::Separator();
-    {
-        static CameraOutputParams params;
-        static int selectedCamera = 0;
-        const auto output = ctx.service.cameraOutputStatus();
-        const bool outputRunning = output && output->running;
-
-        if (cameras->empty()) {
-            ImGui::Text("未检测到摄像头，无法启动实时输出");
-        } else {
-            ImGui::SetNextItemWidth(320.0f);
-            if (ImGui::BeginCombo("摄像头", selectedCamera < static_cast<int>(cameras->size())
-                                              ? cameras->at(static_cast<size_t>(selectedCamera)).name.c_str()
-                                              : "-")) {
-                for (size_t i = 0; i < cameras->size(); ++i) {
-                    const std::string label = std::to_string(i) + ": " + cameras->at(i).name;
-                    if (ImGui::Selectable(label.c_str(), selectedCamera == static_cast<int>(i))) {
-                        selectedCamera = static_cast<int>(i);
-                    }
-                }
-                ImGui::EndCombo();
-            }
-
-            static const char* kOutputTargets[] = {"OBS Virtual Camera (无需管理员)", "Hardware Toolbox 虚拟摄像头 (需管理员)"};
-            if (ImGui::BeginCombo("输出到", kOutputTargets[params.outputTarget])) {
-                for (int i = 0; i < 2; ++i) {
-                    if (ImGui::Selectable(kOutputTargets[i], params.outputTarget == i)) {
-                        params.outputTarget = i;
-                    }
-                }
-                ImGui::EndCombo();
-            }
-            if (params.outputTarget == 0) {
-                ImGui::TextDisabled("目标: OBS Virtual Camera (系统已注册的 OBS 驱动，无需管理员)");
-            } else {
-                ImGui::TextDisabled("目标: Hardware Toolbox 虚拟摄像头 (需先以管理员创建)");
-            }
-
-            params.cameraIndex = selectedCamera;
-            if (ImGui::SliderFloat("缩放", &params.zoom, 1.0f, 3.0f, "%.2fx")) {
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-            if (ImGui::SliderFloat("水平平移", &params.panX, -1.0f, 1.0f, "%.2f")) {
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-            if (ImGui::SliderFloat("垂直平移", &params.panY, -1.0f, 1.0f, "%.2f")) {
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-            if (ImGui::Checkbox("水平翻转", &params.flipHorizontal)) {
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-            ImGui::SameLine();
-            if (ImGui::Checkbox("垂直翻转", &params.flipVertical)) {
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-            ImGui::SameLine();
-            static bool rot180 = false;
-            if (ImGui::Checkbox("旋转 180", &rot180)) {
-                params.rotation = rot180 ? 180 : 0;
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-            if (ImGui::SliderInt("亮度", &params.brightness, -100, 100)) {
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-            if (ImGui::SliderInt("对比度", &params.contrast, -100, 100)) {
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-            if (ImGui::SliderInt("饱和度", &params.saturation, -100, 100)) {
-                if (outputRunning) ctx.service.updateCameraOutput(params);
-            }
-
-            if (outputRunning) {
-                if (ImGui::Button("停止输出")) ctx.service.stopCameraOutput();
-            } else {
-                if (ImGui::Button("开始输出")) ctx.service.startCameraOutput(params);
-            }
-            ImGui::SameLine();
-            ImGui::TextDisabled("输出 1280x720 NV12 @ 源帧率");
-
-            if (output) {
-                if (output->running) {
-                    ImGui::Text("状态: %s | 源 %ux%u | %.1f fps | 已发送 %llu 帧", output->message.c_str(),
-                                output->sourceWidth, output->sourceHeight, output->fps,
-                                static_cast<unsigned long long>(output->framesSent));
-                } else if (!output->message.empty()) {
-                    ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.30f, 1.0f), "%s", output->message.c_str());
-                }
-            }
-            ImGui::TextWrapped("提示: 先创建虚拟摄像头，再点击“开始输出”，然后在其他应用中选择该虚拟摄像头。"
-                               "缩放/平移/颜色调整实时生效；无输出时虚拟摄像头显示测试图案。");
         }
     }
 
