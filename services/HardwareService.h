@@ -51,6 +51,9 @@ public:
     bool isElevated() const;
     void relaunchAsAdmin(const std::string& page = "");
 
+    bool setAutoStart(bool enable);
+    bool autoStartEnabled() const;
+
     void setDeviceEnabledAsync(const std::string& instanceId, bool enable) {
         m_device->setDeviceEnabledAsync(instanceId, enable);
     }

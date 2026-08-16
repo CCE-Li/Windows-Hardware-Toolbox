@@ -158,6 +158,20 @@ void DiagnosticsPage::draw(UiContext& ctx) {
 
     ImGui::Spacing();
     ImGui::Separator();
+    ImGui::Text("启动设置");
+    ImGui::Separator();
+    if (ctx.service.autoStartEnabled()) {
+        if (ImGui::Button("取消开机自启")) ctx.service.setAutoStart(false);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.40f, 0.78f, 0.45f, 1.0f), "已启用开机自启（最小化启动）");
+    } else {
+        if (ImGui::Button("开启开机自启（最小化启动）")) ctx.service.setAutoStart(true);
+        ImGui::SameLine();
+        ImGui::TextDisabled("注册表 HKCU Run，无需管理员");
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
     ImGui::Text("设备操作权限");
     ImGui::Separator();
     if (ctx.service.isElevated()) {

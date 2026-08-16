@@ -192,7 +192,8 @@ int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmd
         uiApp.setInitialPage("摄像头");
     }
     uiApp.setOnQuit([hwnd] { PostMessageW(hwnd, WM_CLOSE, 0, 0); });
-    ShowWindow(hwnd, SW_SHOWDEFAULT);
+    const bool startMinimized = cmdLine && wcsstr(cmdLine, L"--minimized") != nullptr;
+    ShowWindow(hwnd, startMinimized ? SW_SHOWMINIMIZED : SW_SHOWDEFAULT);
     UpdateWindow(hwnd);
 
     const auto frameBudget =

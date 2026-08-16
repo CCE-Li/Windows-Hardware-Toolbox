@@ -240,6 +240,7 @@ def main():
     cam = None
     cap = None
     frames = 0
+    window_frames = 0
     last = time.time()
     fps_win = 0.0
     preview = PreviewShm()
@@ -263,10 +264,13 @@ def main():
 
     write_status({"running": True, "fps": 0, "frames": 0, "error": "", "source": "%dx%d" % (sw, sh)})
 
+    frame_interval = 1.0 / OUT_FPS
+
     while parent_alive(parent_pid) if parent_pid else True:
         params = load_params()
         if not params.get("running", True):
             break
+        frame_start = time.time()
 
         if cap is None:
             cap = _init_camera(params["camera_index"])
@@ -304,17 +308,22 @@ def main():
             cam.sleep_until_next_frame()
             trace_log("slept")
             frames += 1
+            window_frames += 1
             preview.write(out)
             trace_log("preview written")
             now = time.time()
             if now - last >= 2.0:
-                fps_win = frames / (now - last) if now > last else 0.0
+                fps_win = window_frames / (now - last) if now > last else 0.0
+                window_frames = 0
                 write_status({"running": True, "fps": round(fps_win, 1), "frames": frames,
                               "error": "", "source": "%dx%d" % (sw, sh)})
                 last = now
         except Exception as e:
             trace_log("loop exception: %s" % e)
-        time.sleep(0.001)
+        elapsed = time.time() - frame_start
+        if elapsed < frame_interval:
+            trace_log("throttle %.1fms" % ((frame_interval - elapsed) * 1000.0))
+            time.sleep(frame_interval - elapsed)
 
     if cap is not None:
         cap.release()

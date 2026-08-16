@@ -87,6 +87,42 @@ std::chrono::steady_clock::time_point HardwareService::lastRefresh() const {
     return m_lastRefresh.load();
 }
 
+bool HardwareService::setAutoStart(bool enable) {
+    HKEY hKey = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE,
+                      &hKey) != ERROR_SUCCESS) {
+        HTB_ERROR("[service] cannot open Run key");
+        return false;
+    }
+    bool ok = false;
+    if (enable) {
+        wchar_t exe[MAX_PATH]{};
+        if (GetModuleFileNameW(nullptr, exe, MAX_PATH) > 0) {
+            const std::wstring cmd = L"\"" + std::wstring(exe) + L"\" --minimized";
+            const DWORD size = static_cast<DWORD>((cmd.size() + 1) * sizeof(wchar_t));
+            ok = RegSetValueExW(hKey, L"HardwareToolbox", 0, REG_SZ, reinterpret_cast<const BYTE*>(cmd.c_str()),
+                                size) == ERROR_SUCCESS;
+        }
+    } else {
+        ok = RegDeleteValueW(hKey, L"HardwareToolbox") == ERROR_SUCCESS;
+    }
+    RegCloseKey(hKey);
+    HTB_INFO("[service] auto start {}", enable ? "enabled" : "disabled");
+    return ok;
+}
+
+bool HardwareService::autoStartEnabled() const {
+    HKEY hKey = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_QUERY_VALUE,
+                      &hKey) != ERROR_SUCCESS) {
+        return false;
+    }
+    const bool enabled = RegQueryValueExW(hKey, L"HardwareToolbox", nullptr, nullptr, nullptr, nullptr) ==
+                         ERROR_SUCCESS;
+    RegCloseKey(hKey);
+    return enabled;
+}
+
 bool HardwareService::isElevated() const {
     return htb::isElevated();
 }
