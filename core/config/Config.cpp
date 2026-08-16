@@ -51,6 +51,18 @@ Config Config::loadFrom(const std::filesystem::path& path) {
             if (auto v = mon->get_as<int64_t>("interval_ms"))
                 cfg.monitoring.interval_ms = clampInt(static_cast<int>(v->get()), 100, 60000);
         }
+        if (auto cam = tbl["camera"].as_table()) {
+            if (auto v = cam->get_as<int64_t>("camera_index")) cfg.camera.cameraIndex = static_cast<int>(v->get());
+            if (auto v = cam->get_as<int64_t>("rotation")) cfg.camera.rotation = static_cast<int>(v->get());
+            if (auto v = cam->get_as<double>("zoom")) cfg.camera.zoom = static_cast<float>(v->get());
+            if (auto v = cam->get_as<double>("pan_x")) cfg.camera.panX = static_cast<float>(v->get());
+            if (auto v = cam->get_as<double>("pan_y")) cfg.camera.panY = static_cast<float>(v->get());
+            if (auto v = cam->get_as<bool>("flip_h")) cfg.camera.flipHorizontal = v->get();
+            if (auto v = cam->get_as<bool>("flip_v")) cfg.camera.flipVertical = v->get();
+            if (auto v = cam->get_as<int64_t>("brightness")) cfg.camera.brightness = static_cast<int>(v->get());
+            if (auto v = cam->get_as<int64_t>("contrast")) cfg.camera.contrast = static_cast<int>(v->get());
+            if (auto v = cam->get_as<int64_t>("saturation")) cfg.camera.saturation = static_cast<int>(v->get());
+        }
     } catch (const toml::parse_error& e) {
         HTB_ERROR("Failed to parse config {}: {}", path.string(), e.description());
     }
@@ -61,6 +73,17 @@ void Config::save() const {
     toml::table tbl{
         {"ui", toml::table{{"theme", ui.theme}, {"fps", static_cast<int64_t>(ui.fps)}}},
         {"monitoring", toml::table{{"interval_ms", static_cast<int64_t>(monitoring.interval_ms)}}},
+        {"camera",
+         toml::table{{"camera_index", static_cast<int64_t>(camera.cameraIndex)},
+                     {"rotation", static_cast<int64_t>(camera.rotation)},
+                     {"zoom", static_cast<double>(camera.zoom)},
+                     {"pan_x", static_cast<double>(camera.panX)},
+                     {"pan_y", static_cast<double>(camera.panY)},
+                     {"flip_h", camera.flipHorizontal},
+                     {"flip_v", camera.flipVertical},
+                     {"brightness", static_cast<int64_t>(camera.brightness)},
+                     {"contrast", static_cast<int64_t>(camera.contrast)},
+                     {"saturation", static_cast<int64_t>(camera.saturation)}}},
     };
     std::error_code ec;
     std::filesystem::create_directories(m_path.parent_path(), ec);

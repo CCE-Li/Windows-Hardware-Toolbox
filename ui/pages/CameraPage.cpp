@@ -105,9 +105,41 @@ void CameraPage::draw(UiContext& ctx) {
     ImGui::Separator();
     {
         static CameraEngineParams params;
+        static bool paramsLoaded = false;
         static int selectedCamera = 0;
         const auto status = ctx.service.pythonEngineStatus();
         const bool running = status && status->running;
+
+        if (!paramsLoaded) {
+            paramsLoaded = true;
+            const auto& cc = ctx.service.config().camera;
+            params.cameraIndex = cc.cameraIndex;
+            params.rotation = cc.rotation;
+            params.zoom = cc.zoom;
+            params.panX = cc.panX;
+            params.panY = cc.panY;
+            params.flipHorizontal = cc.flipHorizontal;
+            params.flipVertical = cc.flipVertical;
+            params.brightness = cc.brightness;
+            params.contrast = cc.contrast;
+            params.saturation = cc.saturation;
+            selectedCamera = cc.cameraIndex;
+        }
+
+        auto saveParams = [&] {
+            htb::CameraConfig cc{};
+            cc.cameraIndex = params.cameraIndex;
+            cc.rotation = params.rotation;
+            cc.zoom = params.zoom;
+            cc.panX = params.panX;
+            cc.panY = params.panY;
+            cc.flipHorizontal = params.flipHorizontal;
+            cc.flipVertical = params.flipVertical;
+            cc.brightness = params.brightness;
+            cc.contrast = params.contrast;
+            cc.saturation = params.saturation;
+            ctx.service.saveCameraConfig(cc);
+        };
 
         if (cameras->empty()) {
             ImGui::Text("未检测到摄像头，无法启动实时输出");
@@ -120,28 +152,34 @@ void CameraPage::draw(UiContext& ctx) {
                     const std::string label = std::to_string(i) + ": " + cameras->at(i).name;
                     if (ImGui::Selectable(label.c_str(), selectedCamera == static_cast<int>(i))) {
                         selectedCamera = static_cast<int>(i);
+                        params.cameraIndex = selectedCamera;
+                        saveParams();
                     }
                 }
                 ImGui::EndCombo();
             }
             ImGui::TextDisabled("输出: OBS Virtual Camera (1280x720, 无需管理员)");
 
-            params.cameraIndex = selectedCamera;
             if (ImGui::SliderFloat("缩放", &params.zoom, 1.0f, 3.0f, "%.2fx")) {
                 if (running) ctx.service.updatePythonEngine(params);
+                saveParams();
             }
             if (ImGui::SliderFloat("水平平移", &params.panX, -1.0f, 1.0f, "%.2f")) {
                 if (running) ctx.service.updatePythonEngine(params);
+                saveParams();
             }
             if (ImGui::SliderFloat("垂直平移", &params.panY, -1.0f, 1.0f, "%.2f")) {
                 if (running) ctx.service.updatePythonEngine(params);
+                saveParams();
             }
             if (ImGui::Checkbox("水平翻转", &params.flipHorizontal)) {
                 if (running) ctx.service.updatePythonEngine(params);
+                saveParams();
             }
             ImGui::SameLine();
             if (ImGui::Checkbox("垂直翻转", &params.flipVertical)) {
                 if (running) ctx.service.updatePythonEngine(params);
+                saveParams();
             }
             ImGui::SameLine();
             ImGui::Text("旋转:");
@@ -152,22 +190,29 @@ void CameraPage::draw(UiContext& ctx) {
                 if (ImGui::RadioButton(label, params.rotation == r)) {
                     params.rotation = r;
                     if (running) ctx.service.updatePythonEngine(params);
+                    saveParams();
                 }
             }
             if (ImGui::SliderInt("亮度", &params.brightness, -100, 100)) {
                 if (running) ctx.service.updatePythonEngine(params);
+                saveParams();
             }
             if (ImGui::SliderInt("对比度", &params.contrast, -100, 100)) {
                 if (running) ctx.service.updatePythonEngine(params);
+                saveParams();
             }
             if (ImGui::SliderInt("饱和度", &params.saturation, -100, 100)) {
                 if (running) ctx.service.updatePythonEngine(params);
+                saveParams();
             }
 
             if (running) {
                 if (ImGui::Button("停止输出")) ctx.service.stopPythonEngine();
             } else {
-                if (ImGui::Button("开始输出")) ctx.service.startPythonEngine(params);
+                if (ImGui::Button("开始输出")) {
+                    saveParams();
+                    ctx.service.startPythonEngine(params);
+                }
             }
 
             if (status) {

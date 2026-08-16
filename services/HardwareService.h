@@ -99,6 +99,10 @@ public:
     }
 
     const Config& config() const { return m_config; }
+    void saveCameraConfig(const CameraConfig& camera) {
+        m_config.camera = camera;
+        m_config.save();
+    }
     int intervalMs() const { return m_intervalMs; }
     std::chrono::steady_clock::time_point lastRefresh() const;
 
