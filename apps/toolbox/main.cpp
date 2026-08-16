@@ -7,6 +7,7 @@
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <shellapi.h>
 #include <windows.h>
 #include <wrl/client.h>
 
@@ -36,6 +37,33 @@ static ComPtr<IDXGISwapChain1> g_swapChain;
 static ComPtr<ID3D11RenderTargetView> g_rtv;
 static bool g_deviceLost = false;
 static bool g_swapChainOccluded = false;
+
+static constexpr UINT WM_TRAYICON = WM_APP + 1;
+static constexpr UINT WM_REAL_EXIT = WM_APP + 2;
+static NOTIFYICONDATAW g_tray{};
+static bool g_trayAdded = false;
+static htb::HardwareService* g_service = nullptr;
+static htb::CameraEngineParams g_trayParams;
+
+void addTrayIcon(HWND hwnd, HINSTANCE instance) {
+    (void)instance;
+    g_tray.cbSize = sizeof(g_tray);
+    g_tray.hWnd = hwnd;
+    g_tray.uID = 1;
+    g_tray.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    g_tray.uCallbackMessage = WM_TRAYICON;
+    g_tray.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    wcscpy_s(g_tray.szTip, sizeof(g_tray.szTip) / sizeof(g_tray.szTip[0]), L"Windows Hardware Toolbox");
+    Shell_NotifyIconW(NIM_ADD, &g_tray);
+    g_trayAdded = true;
+}
+
+void removeTrayIcon() {
+    if (g_trayAdded) {
+        Shell_NotifyIconW(NIM_DELETE, &g_tray);
+        g_trayAdded = false;
+    }
+}
 
 bool createRenderTarget() {
     ComPtr<ID3D11Texture2D> backBuffer;
@@ -116,9 +144,55 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             return 0;
         case WM_CLOSE:
+            ShowWindow(hwnd, SW_HIDE);
+            return 0;
+        case WM_TRAYICON:
+            if (LOWORD(lParam) == WM_RBUTTONUP || LOWORD(lParam) == WM_CONTEXTMENU) {
+                POINT pt{};
+                GetCursorPos(&pt);
+                HMENU menu = CreatePopupMenu();
+                AppendMenuW(menu, MF_STRING, 1, L"打开");
+                const bool outputRunning = g_service && g_service->pythonEngineStatus() &&
+                                           g_service->pythonEngineStatus()->running;
+                AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+                if (outputRunning) {
+                    AppendMenuW(menu, MF_STRING, 2, L"停止摄像头输出");
+                } else {
+                    AppendMenuW(menu, MF_STRING, 2, L"开始摄像头输出");
+                }
+                AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+                AppendMenuW(menu, MF_STRING, 4, L"退出");
+                SetForegroundWindow(hwnd);
+                const int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, hwnd, nullptr);
+                DestroyMenu(menu);
+                if (cmd == 1) {
+                    ShowWindow(hwnd, SW_SHOW);
+                    ShowWindow(hwnd, SW_RESTORE);
+                    SetForegroundWindow(hwnd);
+                } else if (cmd == 2) {
+                    if (g_service) {
+                        if (outputRunning) {
+                            g_service->stopPythonEngine();
+                        } else {
+                            g_service->startPythonEngine(g_trayParams);
+                        }
+                    }
+                } else if (cmd == 4) {
+                    removeTrayIcon();
+                    PostMessageW(hwnd, WM_REAL_EXIT, 0, 0);
+                }
+            } else if (LOWORD(lParam) == WM_LBUTTONDBLCLK) {
+                ShowWindow(hwnd, SW_SHOW);
+                ShowWindow(hwnd, SW_RESTORE);
+                SetForegroundWindow(hwnd);
+            }
+            return 0;
+        case WM_REAL_EXIT:
+            removeTrayIcon();
             DestroyWindow(hwnd);
             return 0;
         case WM_DESTROY:
+            removeTrayIcon();
             PostQuitMessage(0);
             return 0;
         default:
@@ -141,6 +215,7 @@ LONG WINAPI crashHandler(EXCEPTION_POINTERS* ep) {
 }
 
 int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmdLine) {
+    g_service = &service;
     setDpiAware();
 
     WNDCLASSEXW wc{};
@@ -191,9 +266,14 @@ int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmd
     if (cmdLine && wcsstr(cmdLine, L"--page=camera")) {
         uiApp.setInitialPage("摄像头");
     }
-    uiApp.setOnQuit([hwnd] { PostMessageW(hwnd, WM_CLOSE, 0, 0); });
+    uiApp.setOnQuit([hwnd] { PostMessageW(hwnd, WM_REAL_EXIT, 0, 0); });
+    addTrayIcon(hwnd, instance);
     const bool startMinimized = cmdLine && wcsstr(cmdLine, L"--minimized") != nullptr;
-    ShowWindow(hwnd, startMinimized ? SW_SHOWMINIMIZED : SW_SHOWDEFAULT);
+    if (startMinimized) {
+        ShowWindow(hwnd, SW_HIDE);
+    } else {
+        ShowWindow(hwnd, SW_SHOWDEFAULT);
+    }
     UpdateWindow(hwnd);
 
     const auto frameBudget =
