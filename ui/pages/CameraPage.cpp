@@ -184,22 +184,28 @@ void CameraPage::draw(UiContext& ctx) {
                                "在其他应用中即可选择。");
 
             ImGui::Spacing();
-            ImGui::Text("预览 (拖拽平移 / Ctrl+滚轮缩放 / 双击重置)");
-            ImGui::Separator();
-            static PreviewState previewState;
-            static PreviewCanvas previewCanvas;
-            ID3D11ShaderResourceView* frameSrv = updatePreviewTexture(ctx, previewState);
-            if (!frameSrv) {
-                ImGui::TextDisabled("预览不可用（引擎未运行或尚无数据）");
+            static bool showPreview = true;
+            ImGui::Checkbox("显示预览", &showPreview);
+            if (showPreview) {
+                ImGui::Separator();
+                static PreviewState previewState;
+                static PreviewCanvas previewCanvas;
+                ID3D11ShaderResourceView* frameSrv = updatePreviewTexture(ctx, previewState);
+                if (!frameSrv) {
+                    ImGui::TextDisabled("预览不可用（引擎未运行或尚无数据）");
+                } else {
+                    previewCanvas.draw(frameSrv, static_cast<float>(kPreviewShmWidth),
+                                       static_cast<float>(kPreviewShmHeight), params.zoom, params.panX, params.panY,
+                                       [&](float newZoom, float newPanX, float newPanY) {
+                                           params.zoom = newZoom;
+                                           params.panX = newPanX;
+                                           params.panY = newPanY;
+                                           if (running) ctx.service.updatePythonEngine(params);
+                                       });
+                }
             } else {
-                previewCanvas.draw(frameSrv, static_cast<float>(kPreviewShmWidth),
-                                   static_cast<float>(kPreviewShmHeight), params.zoom, params.panX, params.panY,
-                                   [&](float newZoom, float newPanX, float newPanY) {
-                                       params.zoom = newZoom;
-                                       params.panX = newPanX;
-                                       params.panY = newPanY;
-                                       if (running) ctx.service.updatePythonEngine(params);
-                                   });
+                ImGui::SameLine();
+                ImGui::TextDisabled("预览已关闭，输出不受影响");
             }
         }
     }
