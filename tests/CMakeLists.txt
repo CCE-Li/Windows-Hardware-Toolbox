@@ -3,6 +3,7 @@ include(GoogleTest)
 add_executable(htb_tests
     ConfigTest.cpp
     MetricTest.cpp
+    ProcessProviderTest.cpp
     UtfTest.cpp
     VendorTest.cpp
 )

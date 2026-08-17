@@ -50,6 +50,8 @@ Logs: `%LOCALAPPDATA%/HardwareToolbox/logs/toolbox.log`
 ## Status
 
 v0.2.0: logging, config, worker-thread service, CPU/GPU/Memory/Device/Storage/Network/Audio/Battery/
-Display/Camera providers, 中文 UI (14 pages: 仪表盘/CPU/GPU/内存/存储/网络/USB/设备/音频/显示/摄像头/诊断/传感器/关于),
-CJK font, gateway ping.
-Next: Sensors (vendor SDK plugins), SMART raw data, camera preview (Media Foundation pipeline), EDID details.
+Display/Camera providers, 中文 UI (17 pages: 仪表盘/CPU/GPU/内存/存储/网络/USB/设备/音频/显示/摄像头/
+进程/服务/启动项/诊断/传感器/关于), CJK font, gateway ping, task-manager module (process/service/startup
+providers via NT API + SCM + Registry).
+Next: Sensors (vendor SDK plugins), SMART raw data, camera preview (Media Foundation pipeline), EDID details,
+per-process network rates (ETW/WFP).

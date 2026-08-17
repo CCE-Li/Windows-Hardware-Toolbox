@@ -15,7 +15,10 @@
 #include "ui/pages/GpuPage.h"
 #include "ui/pages/MemoryPage.h"
 #include "ui/pages/NetworkPage.h"
+#include "ui/pages/ProcessPage.h"
 #include "ui/pages/SensorsPage.h"
+#include "ui/pages/ServicesPage.h"
+#include "ui/pages/StartupPage.h"
 #include "ui/pages/StoragePage.h"
 #include "ui/pages/UsbPage.h"
 
@@ -43,6 +46,9 @@ UiApp::UiApp(HardwareService& service, Config config, ID3D11Device* d3dDevice, I
     addPage<AudioPage>(m_pages);
     addPage<DisplayPage>(m_pages);
     addPage<CameraPage>(m_pages);
+    addPage<ProcessPage>(m_pages);
+    addPage<ServicesPage>(m_pages);
+    addPage<StartupPage>(m_pages);
     addPage<DiagnosticsPage>(m_pages);
     addPage<SensorsPage>(m_pages);
     addPage<AboutPage>(m_pages);

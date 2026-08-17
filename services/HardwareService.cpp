@@ -40,7 +40,10 @@ HardwareService::HardwareService(Config config)
       m_display(std::make_unique<DisplayProvider>()),
       m_virtualCamera(std::make_unique<VirtualCameraController>()),
       m_cameraOutput(std::make_unique<VideoTransformPipeline>()),
-      m_cameraEngine(std::make_unique<CameraEngineController>()) {}
+      m_cameraEngine(std::make_unique<CameraEngineController>()),
+      m_process(std::make_unique<ProcessProvider>()),
+      m_systemService(std::make_unique<SystemServiceProvider>()),
+      m_startup(std::make_unique<StartupProvider>()) {}
 
 HardwareService::~HardwareService() {
     stop();
@@ -74,6 +77,9 @@ void HardwareService::loop() {
         refreshProvider("audio", [this] { m_audio->refresh(); });
         refreshProvider("camera", [this] { m_camera->refresh(); });
         refreshProvider("display", [this] { m_display->refresh(); });
+        refreshProvider("process", [this] { m_process->refresh(); });
+        refreshProvider("systemservice", [this] { m_systemService->refresh(); });
+        refreshProvider("startup", [this] { m_startup->refresh(); });
         m_lastRefresh.store(std::chrono::steady_clock::now());
         m_cv.wait_for(lock, std::chrono::milliseconds(m_intervalMs),
                       [this] { return !m_running.load(); });

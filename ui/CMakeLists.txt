@@ -14,7 +14,10 @@ add_library(htb_ui STATIC
     pages/GpuPage.cpp
     pages/MemoryPage.cpp
     pages/NetworkPage.cpp
+    pages/ProcessPage.cpp
     pages/SensorsPage.cpp
+    pages/ServicesPage.cpp
+    pages/StartupPage.cpp
     pages/StoragePage.cpp
     pages/UsbPage.cpp
 )

@@ -20,7 +20,10 @@
 #include "hardware/gpu/GpuProvider.h"
 #include "hardware/memory/MemoryProvider.h"
 #include "hardware/network/NetworkProvider.h"
+#include "hardware/process/ProcessProvider.h"
 #include "hardware/storage/StorageProvider.h"
+#include "hardware/startup/StartupProvider.h"
+#include "hardware/systemservice/SystemServiceProvider.h"
 
 namespace htb {
 
@@ -42,6 +45,9 @@ public:
     const AudioProvider& audio() const { return *m_audio; }
     const CameraProvider& camera() const { return *m_camera; }
     const DisplayProvider& display() const { return *m_display; }
+    const ProcessProvider& process() const { return *m_process; }
+    const SystemServiceProvider& systemService() const { return *m_systemService; }
+    const StartupProvider& startup() const { return *m_startup; }
     void requestDeviceRefresh() { m_device->requestRefresh(); }
 
     bool launchSystemTool(const std::string& tool);
@@ -66,6 +72,36 @@ public:
         m_display->applyModeAsync(deviceName, width, height, refreshHz);
     }
     void setVolumeAsync(float level, bool muted) { m_audio->setVolumeAsync(level, muted); }
+
+    // ---- 任务管理器: 进程 ----
+    void endProcess(uint32_t pid) { m_process->endProcess(pid); }
+    void endProcessTree(uint32_t pid) { m_process->endProcessTree(pid); }
+    void suspendProcess(uint32_t pid) { m_process->suspendProcess(pid); }
+    void resumeProcess(uint32_t pid) { m_process->resumeProcess(pid); }
+    void setProcessPriority(uint32_t pid, ProcessPriority priority) { m_process->setPriority(pid, priority); }
+    void setProcessAffinity(uint32_t pid, uint64_t mask) { m_process->setAffinity(pid, mask); }
+    void restartProcess(uint32_t pid) { m_process->restartProcess(pid); }
+    void inspectProcess(uint32_t pid) { m_process->inspectProcess(pid); }
+    std::shared_ptr<const ProcessOperationResult> processLastOperation() const {
+        return m_process->lastOperation();
+    }
+    std::shared_ptr<const ProcessDetail> processDetail() const { return m_process->detailSnapshot(); }
+
+    // ---- 任务管理器: 服务 ----
+    void startService(const std::string& name) { m_systemService->startService(name); }
+    void stopService(const std::string& name) { m_systemService->stopService(name); }
+    void restartService(const std::string& name) { m_systemService->restartService(name); }
+    std::shared_ptr<const ServiceOperationResult> serviceLastOperation() const {
+        return m_systemService->lastOperation();
+    }
+
+    // ---- 任务管理器: 启动项 ----
+    void setStartupItemEnabled(const StartupItem& item, bool enable) { m_startup->setEnabled(item, enable); }
+    void removeStartupItem(const StartupItem& item) { m_startup->removeItem(item); }
+    void openStartupItemLocation(const StartupItem& item) { m_startup->openLocation(item); }
+    std::shared_ptr<const StartupOperationResult> startupLastOperation() const {
+        return m_startup->lastOperation();
+    }
 
     void createVirtualCamera(const std::string& friendlyName) {
         m_virtualCamera->create(friendlyName);
@@ -129,6 +165,9 @@ private:
     std::unique_ptr<VirtualCameraController> m_virtualCamera;
     std::unique_ptr<VideoTransformPipeline> m_cameraOutput;
     std::unique_ptr<CameraEngineController> m_cameraEngine;
+    std::unique_ptr<ProcessProvider> m_process;
+    std::unique_ptr<SystemServiceProvider> m_systemService;
+    std::unique_ptr<StartupProvider> m_startup;
 
     VcameraAction m_pendingVcamAction = VcameraAction::None;
     std::string m_pendingVcamName;
