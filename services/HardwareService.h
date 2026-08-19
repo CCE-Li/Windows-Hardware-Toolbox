@@ -21,6 +21,7 @@
 #include "hardware/memory/MemoryProvider.h"
 #include "hardware/network/NetworkProvider.h"
 #include "hardware/process/ProcessProvider.h"
+#include "hardware/sensors/SensorsProvider.h"
 #include "hardware/storage/StorageProvider.h"
 #include "hardware/startup/StartupProvider.h"
 #include "hardware/systemservice/SystemServiceProvider.h"
@@ -48,6 +49,7 @@ public:
     const ProcessProvider& process() const { return *m_process; }
     const SystemServiceProvider& systemService() const { return *m_systemService; }
     const StartupProvider& startup() const { return *m_startup; }
+    const SensorsProvider& sensors() const { return *m_sensors; }
     void requestDeviceRefresh() { m_device->requestRefresh(); }
 
     bool launchSystemTool(const std::string& tool);
@@ -168,6 +170,7 @@ private:
     std::unique_ptr<ProcessProvider> m_process;
     std::unique_ptr<SystemServiceProvider> m_systemService;
     std::unique_ptr<StartupProvider> m_startup;
+    std::unique_ptr<SensorsProvider> m_sensors;
 
     VcameraAction m_pendingVcamAction = VcameraAction::None;
     std::string m_pendingVcamName;

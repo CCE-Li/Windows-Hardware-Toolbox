@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -24,6 +25,7 @@ extern "C" NTSTATUS NTAPI NtSuspendProcess(HANDLE ProcessHandle);
 extern "C" NTSTATUS NTAPI NtResumeProcess(HANDLE ProcessHandle);
 
 constexpr DWORD kProcessCommandLineInfo = 60;
+constexpr size_t kMaxIconsPerRefresh = 20;
 
 #if defined(_WIN64)
 struct SysProcInfo {
@@ -292,8 +294,62 @@ std::pair<bool, std::string> doRestart(uint32_t pid) {
     return {true, {}};
 }
 
-std::shared_ptr<ProcessDetail> buildDetail(uint32_t pid) {
-    auto detail = std::make_shared<ProcessDetail>();
+bool extractIconFromPath(const std::wstring& path, ProcessIcon& icon) {
+    SHFILEINFOW sfi{};
+    if (!SHGetFileInfoW(path.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_LARGEICON) || !sfi.hIcon) {
+        return false;
+    }
+    ICONINFO ii{};
+    if (!GetIconInfo(sfi.hIcon, &ii)) {
+        DestroyIcon(sfi.hIcon);
+        return false;
+    }
+    if (!ii.hbmColor) {
+        DestroyIcon(sfi.hIcon);
+        if (ii.hbmMask) DeleteObject(ii.hbmMask);
+        return false;
+    }
+    BITMAP bmp{};
+    GetObjectW(ii.hbmColor, sizeof(bmp), &bmp);
+    const int w = bmp.bmWidth;
+    const int h = bmp.bmHeight;
+    std::vector<uint8_t> bits;
+    if (w > 0 && h > 0 && w <= 256 && h <= 256) {
+        bits.resize(static_cast<size_t>(w) * static_cast<size_t>(h) * 4);
+        BITMAPINFO bi{};
+        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bi.bmiHeader.biWidth = w;
+        bi.bmiHeader.biHeight = -h;  // top-down
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+        const HDC dc = GetDC(nullptr);
+        const int got = dc
+                            ? GetDIBits(dc, ii.hbmColor, 0, static_cast<UINT>(h), bits.data(), &bi, DIB_RGB_COLORS)
+                            : 0;
+        if (dc) ReleaseDC(nullptr, dc);
+        if (got == 0) bits.clear();
+    }
+    if (ii.hbmMask) DeleteObject(ii.hbmMask);
+    DeleteObject(ii.hbmColor);
+    DestroyIcon(sfi.hIcon);
+
+    if (bits.empty()) return false;
+    icon.width = w;
+    icon.height = h;
+    icon.bgra = std::move(bits);
+    icon.available = true;
+    return true;
+}
+
+bool extractIconByName(const std::string& name, ProcessIcon& icon) {
+    if (name.empty() || name.find('.') == std::string::npos) return false;
+    const std::wstring sysPath = L"C:\\Windows\\System32\\" + toWide(name);
+    if (GetFileAttributesW(sysPath.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
+    return extractIconFromPath(sysPath, icon);
+}
+
+std::shared_ptr<ProcessDetail> buildDetail(uint32_t pid) {    auto detail = std::make_shared<ProcessDetail>();
     detail->pid = pid;
 
     const HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
@@ -377,6 +433,7 @@ struct ProcessProvider::Impl {
     std::unordered_map<uint32_t, Prev> prev;
     uint64_t prevTotalTicks = 0;
     std::chrono::steady_clock::time_point prevTime;
+    std::unordered_map<std::string, ProcessIcon> iconCache;
     std::unique_ptr<std::thread> opThread;
     std::atomic<bool> opRunning{false};
 };
@@ -423,6 +480,11 @@ void ProcessProvider::refresh() {
     nextPrev.reserve(raw.size());
     uint64_t idleDelta = 0;
 
+    size_t iconsBudget = kMaxIconsPerRefresh;
+    std::unordered_set<std::string> iconSeen;
+    iconSeen.reserve(m_impl->iconCache.size());
+    for (const auto& [name, _] : m_impl->iconCache) iconSeen.insert(name);
+
     for (RawEntry& e : raw) {
         ProcessInfo info;
         info.pid = e.pid;
@@ -450,6 +512,21 @@ void ProcessProvider::refresh() {
             }
             const DWORD cls = GetPriorityClass(h);
             if (cls != 0) info.priority = priorityClassName(cls);
+
+            if (iconsBudget > 0 && !iconSeen.contains(info.name)) {
+                iconSeen.insert(info.name);
+                ProcessIcon icon;
+                icon.name = info.name;
+                bool ok = false;
+                wchar_t exePath[MAX_PATH]{};
+                DWORD pathLen = MAX_PATH;
+                if (QueryFullProcessImageNameW(h, 0, exePath, &pathLen)) {
+                    ok = extractIconFromPath(std::wstring(exePath, pathLen), icon);
+                }
+                if (!ok) ok = extractIconByName(info.name, icon);
+                if (ok) --iconsBudget;
+                m_impl->iconCache[info.name] = std::move(icon);
+            }
             CloseHandle(h);
         }
         if (info.priority.empty()) info.priority = priorityFromBase(e.basePriority);
@@ -479,6 +556,13 @@ void ProcessProvider::refresh() {
     m_impl->prev = std::move(nextPrev);
     m_impl->prevTotalTicks = totalTicks;
     m_impl->prevTime = now;
+
+    auto icons = std::make_shared<std::vector<ProcessIcon>>();
+    icons->reserve(m_impl->iconCache.size());
+    for (const auto& [name, icon] : m_impl->iconCache) {
+        if (icon.available) icons->push_back(icon);
+    }
+    m_icons.store(std::move(icons));
 
     const uint32_t inspectPid = m_inspectPid.exchange(0);
     if (inspectPid != 0) m_detail.store(buildDetail(inspectPid));

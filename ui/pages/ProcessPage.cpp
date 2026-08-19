@@ -1,9 +1,12 @@
 #include "ui/pages/ProcessPage.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/util/Clipboard.h"
@@ -24,9 +27,21 @@ std::string formatRate(double bps) {
     return formatBytes(static_cast<uint64_t>(bps)) + "/s";
 }
 
-int cmpName(const std::string& a, const std::string& b) {
-    const int r = _stricmp(a.c_str(), b.c_str());
-    return r;
+bool icontains(const std::string& haystack, const std::string& needle) {
+    if (needle.empty()) return true;
+    if (haystack.size() < needle.size()) return false;
+    for (size_t i = 0; i + needle.size() <= haystack.size(); ++i) {
+        bool match = true;
+        for (size_t j = 0; j < needle.size(); ++j) {
+            if (std::tolower(static_cast<unsigned char>(haystack[i + j])) !=
+                std::tolower(static_cast<unsigned char>(needle[j]))) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
 }
 
 int cmpU32(uint32_t a, uint32_t b) {
@@ -58,6 +73,25 @@ std::string processReport(const ProcessInfo& p) {
     report += "优先级: " + p.priority + "\n";
     report += "父进程 PID: " + std::to_string(p.ppid);
     return report;
+}
+
+int compareProcesses(const ProcessInfo& a, const ProcessInfo& b, int column, bool asc) {
+    int c = 0;
+    switch (column) {
+        case 0: c = _stricmp(a.name.c_str(), b.name.c_str()); break;
+        case 1: c = cmpU32(a.pid, b.pid); break;
+        case 2: c = cmpF64(a.cpuPercent, b.cpuPercent); break;
+        case 3: c = cmpF64(static_cast<double>(a.workingSetBytes), static_cast<double>(b.workingSetBytes)); break;
+        case 4: c = cmpF64(static_cast<double>(a.privateBytes), static_cast<double>(b.privateBytes)); break;
+        case 5: c = cmpF64(a.readRateBps, b.readRateBps); break;
+        case 6: c = cmpF64(a.writeRateBps, b.writeRateBps); break;
+        case 7: c = cmpU32(a.threads, b.threads); break;
+        case 8: c = cmpU32(a.sessionId, b.sessionId); break;
+        case 9: c = _stricmp(a.priority.c_str(), b.priority.c_str()); break;
+        default: break;
+    }
+    if (c == 0) c = cmpU32(a.pid, b.pid);
+    return asc ? c : -c;
 }
 
 } // namespace
@@ -97,6 +131,26 @@ void ProcessPage::draw(UiContext& ctx) {
         }
     }
 
+    ImGui::SetNextItemWidth(280.0f);
+    ImGui::InputTextWithHint("##proc_search", "搜索进程名称 (不区分大小写)...", m_search, sizeof(m_search));
+    ImGui::SameLine();
+    if (ImGui::Checkbox("进程树", &m_treeMode)) {
+        if (m_treeMode) m_expanded.clear();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("点击进程自动显示详细信息");
+
+    const auto icons = ctx.service.process().iconsSnapshot();
+    if (icons) m_icons.update(*icons, ctx.d3dDevice);
+
+    const bool tree = m_treeMode && m_search[0] == '\0';
+
+    std::vector<const ProcessInfo*> rows;
+    rows.reserve(snap->processes.size());
+    for (const ProcessInfo& p : snap->processes) {
+        if (icontains(p.name, m_search)) rows.push_back(&p);
+    }
+
     const float detailsH = (m_selectedPid != 0) ? 150.0f : 0.0f;
     const float tableH =
         std::max(50.0f, ImGui::GetContentRegionAvail().y - detailsH - ImGui::GetFrameHeightWithSpacing());
@@ -117,49 +171,61 @@ void ProcessPage::draw(UiContext& ctx) {
         ImGui::TableSetupColumn("优先级", ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableHeadersRow();
 
-        std::vector<size_t> order(snap->processes.size());
-        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
-
         const ImGuiTableSortSpecs* sorts = ImGui::TableGetSortSpecs();
+        int sortColumn = 0;
+        bool sortAsc = true;
         if (sorts && sorts->SpecsCount > 0) {
-            const ImGuiTableColumnSortSpecs& spec = sorts->Specs[0];
-            const bool asc = (spec.SortDirection == ImGuiSortDirection_Ascending);
-            std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-                const ProcessInfo& pa = snap->processes[a];
-                const ProcessInfo& pb = snap->processes[b];
-                int c = 0;
-                switch (spec.ColumnIndex) {
-                    case 0: c = cmpName(pa.name, pb.name); break;
-                    case 1: c = cmpU32(pa.pid, pb.pid); break;
-                    case 2: c = cmpF64(pa.cpuPercent, pb.cpuPercent); break;
-                    case 3: c = cmpF64(static_cast<double>(pa.workingSetBytes), static_cast<double>(pb.workingSetBytes)); break;
-                    case 4: c = cmpF64(static_cast<double>(pa.privateBytes), static_cast<double>(pb.privateBytes)); break;
-                    case 5: c = cmpF64(pa.readRateBps, pb.readRateBps); break;
-                    case 6: c = cmpF64(pa.writeRateBps, pb.writeRateBps); break;
-                    case 7: c = cmpU32(pa.threads, pb.threads); break;
-                    case 8: c = cmpU32(pa.sessionId, pb.sessionId); break;
-                    case 9: c = cmpName(pa.priority, pb.priority); break;
-                    default: break;
-                }
-                if (c == 0) c = cmpU32(pa.pid, pb.pid);
-                return asc ? (c < 0) : (c > 0);
-            });
+            sortColumn = sorts->Specs[0].ColumnIndex;
+            sortAsc = (sorts->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
         }
+        std::sort(rows.begin(), rows.end(), [&](const ProcessInfo* a, const ProcessInfo* b) {
+            return compareProcesses(*a, *b, sortColumn, sortAsc) < 0;
+        });
 
-        for (const size_t idx : order) {
-            const ProcessInfo& p = snap->processes[idx];
+        auto renderRow = [&](const ProcessInfo& p, int depth, bool hasChildren, bool expanded) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            const bool selected = (p.pid == m_selectedPid);
             ImGui::PushID(static_cast<int>(p.pid));
-            if (ImGui::Selectable(p.name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns)) {
-                m_selectedPid = p.pid;
+
+            const float indent = tree ? depth * 14.0f : 0.0f;
+            if (indent > 0.0f) ImGui::Indent(indent);
+
+            if (tree) {
+                if (hasChildren) {
+                    if (ImGui::ArrowButton("##expand", expanded ? ImGuiDir_Down : ImGuiDir_Right)) {
+                        if (expanded) {
+                            m_expanded.erase(p.pid);
+                        } else {
+                            m_expanded.insert(p.pid);
+                        }
+                    }
+                } else {
+                    ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), 0.0f));
+                }
+                ImGui::SameLine();
+            }
+
+            if (const ImTextureID tex = m_icons.texture(p.name)) {
+                ImGui::Image(tex, ImVec2(16.0f, 16.0f));
+                ImGui::SameLine();
+            }
+
+            const bool selected = (p.pid == m_selectedPid);
+            const ImGuiSelectableFlags flags = tree ? 0 : ImGuiSelectableFlags_SpanAllColumns;
+            if (ImGui::Selectable(p.name.c_str(), selected, flags)) {
+                if (m_selectedPid != p.pid) {
+                    m_selectedPid = p.pid;
+                    m_inspectRequestedPid = p.pid;
+                    ctx.service.inspectProcess(p.pid);
+                }
             }
             if (ImGui::BeginPopupContextItem()) {
                 m_selectedPid = p.pid;
                 drawContextMenu(ctx, p);
                 ImGui::EndPopup();
             }
+
+            if (indent > 0.0f) ImGui::Unindent(indent);
             ImGui::PopID();
 
             ImGui::TableNextColumn();
@@ -180,7 +246,34 @@ void ProcessPage::draw(UiContext& ctx) {
             ImGui::Text("%u", p.sessionId);
             ImGui::TableNextColumn();
             ImGui::Text("%s", p.priority.c_str());
+        };
+
+        if (tree) {
+            std::unordered_map<uint32_t, std::vector<const ProcessInfo*>> children;
+            std::unordered_set<uint32_t> present;
+            for (const ProcessInfo* p : rows) present.insert(p->pid);
+            std::vector<const ProcessInfo*> roots;
+            for (const ProcessInfo* p : rows) {
+                if (present.contains(p->ppid)) {
+                    children[p->ppid].push_back(p);
+                } else {
+                    roots.push_back(p);
+                }
+            }
+            std::function<void(const ProcessInfo*, int)> drawNode = [&](const ProcessInfo* p, int depth) {
+                const auto childIt = children.find(p->pid);
+                const bool hasChildren = childIt != children.end() && !childIt->second.empty();
+                const bool expanded = m_expanded.contains(p->pid);
+                renderRow(*p, depth, hasChildren, expanded);
+                if (hasChildren && expanded) {
+                    for (const ProcessInfo* child : childIt->second) drawNode(child, depth + 1);
+                }
+            };
+            for (const ProcessInfo* root : roots) drawNode(root, 0);
+        } else {
+            for (const ProcessInfo* p : rows) renderRow(*p, 0, false, false);
         }
+
         ImGui::EndTable();
     }
 
@@ -194,7 +287,10 @@ void ProcessPage::drawDetails(UiContext& ctx) {
     if (m_selectedPid == 0) return;
     ImGui::Spacing();
     ImGui::Separator();
-    if (ImGui::Button("获取详细信息")) ctx.service.inspectProcess(m_selectedPid);
+    if (ImGui::Button("刷新详情")) {
+        m_inspectRequestedPid = m_selectedPid;
+        ctx.service.inspectProcess(m_selectedPid);
+    }
     ImGui::SameLine();
     ImGui::TextDisabled("PID %u", m_selectedPid);
 
@@ -207,8 +303,10 @@ void ProcessPage::drawDetails(UiContext& ctx) {
         ImGui::TextWrapped("可执行文件: %s", detail->executablePath.empty() ? "-" : detail->executablePath.c_str());
         ImGui::TextWrapped("命令行: %s", detail->commandLine.empty() ? "-" : detail->commandLine.c_str());
         ImGui::Text("用户: %s", detail->userName.empty() ? "-" : detail->userName.c_str());
+    } else if (m_inspectRequestedPid == m_selectedPid) {
+        ImGui::TextDisabled("正在获取详细信息...");
     } else {
-        ImGui::TextDisabled("点击“获取详细信息”查看命令行 / 路径 / 用户");
+        ImGui::TextDisabled("点击进程后自动获取命令行 / 路径 / 用户");
     }
 }
 
@@ -268,10 +366,6 @@ void ProcessPage::drawContextMenu(UiContext& ctx, const ProcessInfo& proc) {
         m_affinityMask = (m_affinityCores >= 64) ? ~0ull : ((1ull << m_affinityCores) - 1);
     }
     ImGui::Separator();
-    if (ImGui::MenuItem("获取详细信息")) {
-        m_selectedPid = proc.pid;
-        ctx.service.inspectProcess(proc.pid);
-    }
     if (ImGui::MenuItem("复制进程信息")) htb::copyToClipboard(processReport(proc));
 }
 

@@ -17,6 +17,7 @@
 #include "hardware/camera/VideoTransformPipeline.h"
 #include "hardware/camera/VirtualCameraController.h"
 #include "hardware/camera/VirtualCameraRegistrar.h"
+#include "resources/resource.h"
 #include "services/HardwareService.h"
 #include "ui/UiApp.h"
 #include "ui/themes/Theme.h"
@@ -52,7 +53,7 @@ void addTrayIcon(HWND hwnd, HINSTANCE instance) {
     g_tray.uID = 1;
     g_tray.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_tray.uCallbackMessage = WM_TRAYICON;
-    g_tray.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    g_tray.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_ICON1));
     wcscpy_s(g_tray.szTip, sizeof(g_tray.szTip) / sizeof(g_tray.szTip[0]), L"Windows Hardware Toolbox");
     Shell_NotifyIconW(NIM_ADD, &g_tray);
     g_trayAdded = true;
@@ -223,6 +224,8 @@ int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmd
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc = wndProc;
     wc.hInstance = instance;
+    wc.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_ICON1));
+    wc.hIconSm = LoadIconW(instance, MAKEINTRESOURCEW(IDI_ICON1));
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     wc.lpszClassName = L"HardwareToolboxWindow";
@@ -263,8 +266,25 @@ int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmd
     ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
 
     htb::UiApp uiApp(service, service.config(), g_device.Get(), g_context.Get());
-    if (cmdLine && wcsstr(cmdLine, L"--page=camera")) {
-        uiApp.setInitialPage("摄像头");
+    static const struct {
+        const wchar_t* key;
+        const char* title;
+    } kPages[] = {
+        {L"dashboard", "仪表盘"},  {L"cpu", "CPU"},       {L"gpu", "GPU"},
+        {L"memory", "内存"},       {L"storage", "存储"},   {L"network", "网络"},
+        {L"usb", "USB"},          {L"devices", "设备"},    {L"audio", "音频"},
+        {L"display", "显示"},      {L"camera", "摄像头"},   {L"process", "进程"},
+        {L"services", "服务"},     {L"startup", "启动项"},  {L"sensors", "传感器"},
+        {L"diagnostics", "诊断"},  {L"about", "关于"},
+    };
+    if (cmdLine) {
+        const wchar_t* page = wcsstr(cmdLine, L"--page=");
+        if (page) {
+            page += 7;
+            for (const auto& p : kPages) {
+                if (_wcsicmp(page, p.key) == 0) uiApp.setInitialPage(p.title);
+            }
+        }
     }
     uiApp.setOnQuit([hwnd] { PostMessageW(hwnd, WM_REAL_EXIT, 0, 0); });
     addTrayIcon(hwnd, instance);

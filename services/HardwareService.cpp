@@ -43,7 +43,8 @@ HardwareService::HardwareService(Config config)
       m_cameraEngine(std::make_unique<CameraEngineController>()),
       m_process(std::make_unique<ProcessProvider>()),
       m_systemService(std::make_unique<SystemServiceProvider>()),
-      m_startup(std::make_unique<StartupProvider>()) {}
+      m_startup(std::make_unique<StartupProvider>()),
+      m_sensors(std::make_unique<SensorsProvider>()) {}
 
 HardwareService::~HardwareService() {
     stop();
@@ -80,6 +81,7 @@ void HardwareService::loop() {
         refreshProvider("process", [this] { m_process->refresh(); });
         refreshProvider("systemservice", [this] { m_systemService->refresh(); });
         refreshProvider("startup", [this] { m_startup->refresh(); });
+        refreshProvider("sensors", [this] { m_sensors->refresh(); });
         m_lastRefresh.store(std::chrono::steady_clock::now());
         m_cv.wait_for(lock, std::chrono::milliseconds(m_intervalMs),
                       [this] { return !m_running.load(); });

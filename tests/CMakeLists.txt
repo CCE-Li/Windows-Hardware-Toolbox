@@ -4,6 +4,7 @@ add_executable(htb_tests
     ConfigTest.cpp
     MetricTest.cpp
     ProcessProviderTest.cpp
+    SensorsProviderTest.cpp
     UtfTest.cpp
     VendorTest.cpp
 )

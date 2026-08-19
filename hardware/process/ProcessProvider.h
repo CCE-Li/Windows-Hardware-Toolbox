@@ -57,6 +57,14 @@ struct ProcessDetail {
     std::string status;   // "ok" or error description
 };
 
+struct ProcessIcon {
+    std::string name;           // process image name (cache key)
+    int width = 0;
+    int height = 0;
+    std::vector<uint8_t> bgra;  // 32bpp BGRA, row-major, top-down
+    bool available = false;
+};
+
 struct ProcessOperationResult {
     std::string operation;
     uint32_t pid = 0;
@@ -98,6 +106,7 @@ public:
 
     void inspectProcess(uint32_t pid);
     std::shared_ptr<const ProcessDetail> detailSnapshot() const { return m_detail.load(); }
+    std::shared_ptr<const std::vector<ProcessIcon>> iconsSnapshot() const { return m_icons.load(); }
 
 private:
     void runOperation(const std::string& operation, uint32_t pid,
@@ -108,6 +117,7 @@ private:
     std::atomic<std::shared_ptr<const ProcessSnapshot>> m_snapshot;
     std::atomic<std::shared_ptr<const ProcessOperationResult>> m_lastOperation;
     std::atomic<std::shared_ptr<const ProcessDetail>> m_detail;
+    std::atomic<std::shared_ptr<const std::vector<ProcessIcon>>> m_icons;
     std::atomic<uint32_t> m_inspectPid{0};
 };
 

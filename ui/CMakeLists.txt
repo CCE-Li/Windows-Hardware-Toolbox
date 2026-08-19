@@ -2,6 +2,7 @@ add_library(htb_ui STATIC
     UiApp.cpp
     themes/Theme.cpp
     widgets/HistoryChart.cpp
+    widgets/IconCache.cpp
     widgets/PreviewCanvas.cpp
     pages/AboutPage.cpp
     pages/AudioPage.cpp
