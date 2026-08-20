@@ -23,3 +23,4 @@ add_custom_command(
 
 add_executable(toolbox WIN32 main.cpp ${GENERATED_RES})
 target_link_libraries(toolbox PRIVATE htb_ui)
+target_link_options(toolbox PRIVATE "${GENERATED_RES}")

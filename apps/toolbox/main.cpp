@@ -281,8 +281,10 @@ int runApp(HINSTANCE instance, htb::HardwareService& service, const wchar_t* cmd
         const wchar_t* page = wcsstr(cmdLine, L"--page=");
         if (page) {
             page += 7;
+            const wchar_t* end = wcschr(page, L' ');
+            std::wstring key = end ? std::wstring(page, end) : std::wstring(page);
             for (const auto& p : kPages) {
-                if (_wcsicmp(page, p.key) == 0) uiApp.setInitialPage(p.title);
+                if (_wcsicmp(key.c_str(), p.key) == 0) uiApp.setInitialPage(p.title);
             }
         }
     }
